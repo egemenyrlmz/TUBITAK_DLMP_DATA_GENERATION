@@ -25,6 +25,18 @@ function dashboard_4bus_dlmp_scenario_lab_4_1()
     app = struct();
     app.T = table();
     app.sensitivityT = table();
+    app.networkTemplate = "Current 4-bus system";
+    app.topologyType = "Radial chain";
+    app.isDynamicNetworkMode = false;
+    app.busConfig = table();
+    app.branchConfig = table();
+    app.genConfig = table();
+    app.dynamic_mpc = [];
+    app.dynamicValidationMessages = strings(0, 1);
+    app.scenarioSummary = table();
+    app.busResultsLong = table();
+    app.branchResultsLong = table();
+    app.genResultsLong = table();
     app.validationTable = table();
     app.validationSummary = table();
     app.econTable = table();
@@ -199,11 +211,113 @@ app.status = uilabel(topButtonGrid, ...
     tabs.Layout.Row = 1;
     tabs.Layout.Column = 2;
 
+    app.tabNetworkBuilder = uitab(tabs, 'Title', 'Network Builder');
     app.tabOverview = uitab(tabs, 'Title', 'Overview');
     app.tabEconometrics = uitab(tabs, 'Title', 'Econometric Outputs');
     app.tabValidation = uitab(tabs, 'Title', 'Validation Diagnostics');
     app.tabSensitivity = uitab(tabs, 'Title', 'Sensitivity Lab');
     app.tabData = uitab(tabs, 'Title', 'Data Preview');
+
+    ng = uigridlayout(app.tabNetworkBuilder, [2 3]);
+    ng.Padding = [10 10 10 10];
+    ng.ColumnWidth = {310, '1.4x', '1x'};
+    ng.RowHeight = {'1x', '1x'};
+
+    quickPanel = uipanel(ng, 'Title', 'Quick Setup');
+    quickPanel.Layout.Row = [1 2];
+    quickPanel.Layout.Column = 1;
+    qg = uigridlayout(quickPanel, [16 2]);
+    qg.RowHeight = repmat({24}, 1, 16);
+    qg.ColumnWidth = {150, '1x'};
+    qg.Padding = [8 8 8 8];
+    qg.RowSpacing = 5;
+
+    addLabel(qg, 'Template');
+    app.networkTemplateDrop = uidropdown(qg, ...
+        'Items', {'Current 4-bus system', 'Auto radial feeder', 'Custom blank network'}, ...
+        'Value', char(app.networkTemplate));
+
+    addLabel(qg, 'Topology');
+    app.topologyDrop = uidropdown(qg, ...
+        'Items', {'Radial chain', 'Star feeder', 'Custom parent list'}, ...
+        'Value', char(app.topologyType));
+
+    addLabel(qg, 'Load buses');
+    app.nLoadBusField = uispinner(qg, 'Value', 1, 'Limits', [0 Inf], 'RoundFractionalValues', 'on');
+
+    addLabel(qg, 'DER buses');
+    app.nDERBusField = uispinner(qg, 'Value', 1, 'Limits', [0 Inf], 'RoundFractionalValues', 'on');
+
+    addLabel(qg, 'Prosumer buses');
+    app.nProsumerBusField = uispinner(qg, 'Value', 1, 'Limits', [0 Inf], 'RoundFractionalValues', 'on');
+
+    addLabel(qg, 'Default load Pd');
+    app.defaultLoadRangeField = uieditfield(qg, 'text', 'Value', '0.50, 2.00');
+
+    addLabel(qg, 'Default PF');
+    app.defaultPfRangeField = uieditfield(qg, 'text', 'Value', '0.88, 0.98');
+
+    addLabel(qg, 'Default branch r');
+    app.defaultBranchRField = uieditfield(qg, 'text', 'Value', '0.005');
+
+    addLabel(qg, 'Default branch x');
+    app.defaultBranchXField = uieditfield(qg, 'text', 'Value', '0.006');
+
+    addLabel(qg, 'Default rateA');
+    app.defaultBranchRateField = uieditfield(qg, 'text', 'Value', '5.0');
+
+    addLabel(qg, 'Default base kV');
+    app.defaultBaseKVField = uieditfield(qg, 'text', 'Value', '33');
+
+    addLabel(qg, 'Default baseMVA');
+    app.defaultBaseMVAField = uieditfield(qg, 'text', 'Value', '10');
+
+    app.previewNetworkButton = uibutton(qg, 'push', ...
+        'Text', 'Build / Preview Network', ...
+        'ButtonPushedFcn', @(~, ~) buildPreviewNetwork());
+    app.previewNetworkButton.Layout.Row = 13;
+    app.previewNetworkButton.Layout.Column = [1 2];
+
+    app.useNetworkButton = uibutton(qg, 'push', ...
+        'Text', 'Use This Network', ...
+        'ButtonPushedFcn', @(~, ~) useThisNetwork());
+    app.useNetworkButton.Layout.Row = 14;
+    app.useNetworkButton.Layout.Column = [1 2];
+
+    app.networkQuickSummary = uilabel(qg, 'Text', '4-bus template ready.', 'FontWeight', 'bold');
+    app.networkQuickSummary.Layout.Row = 15;
+    app.networkQuickSummary.Layout.Column = [1 2];
+
+    networkPreviewPanel = uipanel(ng, 'Title', 'Network Preview');
+    networkPreviewPanel.Layout.Row = 1;
+    networkPreviewPanel.Layout.Column = 3;
+    npg = uigridlayout(networkPreviewPanel, [1 1]);
+    npg.Padding = [6 6 6 6];
+    app.axNetworkPreview = uiaxes(npg);
+    title(app.axNetworkPreview, 'Network Preview');
+    grid(app.axNetworkPreview, 'off');
+
+    networkValidationPanel = uipanel(ng, 'Title', 'Validation');
+    networkValidationPanel.Layout.Row = 2;
+    networkValidationPanel.Layout.Column = 3;
+    nvg = uigridlayout(networkValidationPanel, [1 1]);
+    nvg.Padding = [6 6 6 6];
+    app.networkValidationArea = uitextarea(nvg, 'Editable', 'off', ...
+        'Value', {'Build or edit a network, then click Use This Network.'});
+
+    configPanel = uipanel(ng, 'Title', 'Advanced Tables');
+    configPanel.Layout.Row = [1 2];
+    configPanel.Layout.Column = 2;
+    cfgGrid = uigridlayout(configPanel, [3 1]);
+    cfgGrid.RowHeight = {'1x', '1x', '1x'};
+    cfgGrid.Padding = [8 8 8 8];
+
+    app.busConfigUITable = uitable(cfgGrid, 'ColumnEditable', true(1, 10), ...
+        'CellEditCallback', @(~, ~) handleNetworkTableEdit());
+    app.branchConfigUITable = uitable(cfgGrid, 'ColumnEditable', true(1, 8), ...
+        'CellEditCallback', @(~, ~) handleNetworkTableEdit());
+    app.genConfigUITable = uitable(cfgGrid, 'ColumnEditable', true(1, 14), ...
+        'CellEditCallback', @(~, ~) handleNetworkTableEdit());
 
     og = uigridlayout(app.tabOverview, [2 2]);
     og.Padding = [10 10 10 10];
@@ -259,9 +373,23 @@ app.status = uilabel(topButtonGrid, ...
     app.axSensLocation = uiaxes(sg); title(app.axSensLocation, 'Same Total Demand, Different Load Location'); grid(app.axSensLocation, 'off');
     app.axSensSwap = uiaxes(sg); title(app.axSensSwap, 'Bus 2 / Bus 4 Pd Swap Effect'); grid(app.axSensSwap, 'off');
 
-    dg = uigridlayout(app.tabData, [1 1]);
+    dg = uigridlayout(app.tabData, [2 1]);
     dg.Padding = [10 10 10 10];
-    app.dataUITable = uitable(dg, 'Data', table());
+    dg.RowHeight = {28, '1x'};
+    app.dataViewDrop = uidropdown(dg, ...
+        'Items', {'Scenario Summary', 'Bus Results', 'Branch Results', 'Generator Results'}, ...
+        'Value', 'Scenario Summary', ...
+        'ValueChangedFcn', @(~, ~) updateTables());
+    app.dataTabGroup = uitabgroup(dg);
+    app.dataTabGroup.Layout.Row = 2;
+    app.dataSummaryTab = uitab(app.dataTabGroup, 'Title', 'Scenario Summary');
+    app.dataBusTab = uitab(app.dataTabGroup, 'Title', 'Bus Results');
+    app.dataBranchTab = uitab(app.dataTabGroup, 'Title', 'Branch Results');
+    app.dataGenTab = uitab(app.dataTabGroup, 'Title', 'Generator Results');
+    app.dataSummaryUITable = uitable(uigridlayout(app.dataSummaryTab, [1 1]), 'Data', table());
+    app.dataBusUITable = uitable(uigridlayout(app.dataBusTab, [1 1]), 'Data', table());
+    app.dataBranchUITable = uitable(uigridlayout(app.dataBranchTab, [1 1]), 'Data', table());
+    app.dataGenUITable = uitable(uigridlayout(app.dataGenTab, [1 1]), 'Data', table());
 
     %% -----------------------------
     % Nested UI helper functions
@@ -279,10 +407,21 @@ app.status = uilabel(topButtonGrid, ...
         items = {'Uniform', 'Normal-Truncated', 'Triangular', 'Beta(2,2)-Bounded', 'Lognormal-Truncated', 'Two-Peak Mixture'};
     end
 
+    function handleNetworkTableEdit()
+        app.busConfig = app.busConfigUITable.Data;
+        app.branchConfig = app.branchConfigUITable.Data;
+        app.genConfig = app.genConfigUITable.Data;
+        updateNetworkBuilderState(false);
+    end
+
     %% -----------------------------
     % Main callbacks
     %% -----------------------------
     function runGeneration()
+        if app.isDynamicNetworkMode
+            runDynamicGeneration();
+            return;
+        end
         try
             app.runButton.Enable = 'off';
             app.status.Text = 'Running OPF scenarios...';
@@ -402,6 +541,11 @@ app.status = uilabel(topButtonGrid, ...
             logMsg(sprintf('Loading %s', fullName));
 
             T = readtable(fullName, 'Sheet', 'scenario_dataset');
+            app.isDynamicNetworkMode = false;
+            app.scenarioSummary = table();
+            app.busResultsLong = table();
+            app.branchResultsLong = table();
+            app.genResultsLong = table();
             app.T = addDerivedMetrics(T);
             app.econTable = runEconometricModels(app.T);
 
@@ -425,7 +569,122 @@ app.status = uilabel(topButtonGrid, ...
         end
     end
 
+    function runDynamicGeneration()
+        try
+            app.runButton.Enable = 'off';
+            app.status.Text = 'Running dynamic OPF scenarios...';
+            logMsg('Starting dynamic scenario generation.');
+            drawnow;
+
+            cfg = readConfigFromUI();
+            rng(cfg.seed);
+
+            [isValid, messages] = validateNetworkConfig(app.busConfig, app.branchConfig, app.genConfig);
+            app.dynamicValidationMessages = messages;
+            app.networkValidationArea.Value = cellstr(messages);
+            if ~isValid
+                error('Network configuration is invalid. Fix the Network Builder tables before running scenarios.');
+            end
+
+            base_mpc = buildMPCFromConfig(app.busConfig, app.branchConfig, app.genConfig, cfg.dynamicBaseMVA);
+            app.dynamic_mpc = base_mpc;
+            mpopt = mpoption('verbose', 0, 'out.all', 0, 'opf.ac.solver', 'MIPS');
+
+            summaryRows = struct([]);
+            busRowsAll = table();
+            branchRowsAll = table();
+            genRowsAll = table();
+            validCount = 0;
+            totalAttempts = 0;
+            opfFailCount = 0;
+
+            while validCount < cfg.N
+                scenarioSolved = false;
+                candidateNo = validCount + 1;
+
+                for attempt = 1:cfg.maxAttemptsPerScenario
+                    totalAttempts = totalAttempts + 1;
+                    scenario = generateDynamicScenarioFromConfig(cfg, app.busConfig, app.genConfig);
+                    mpc = applyDynamicScenarioToMPC(base_mpc, scenario);
+
+                    try
+                        results = runopf(mpc, mpopt);
+                    catch ME
+                        opfFailCount = opfFailCount + 1;
+                        if attempt == 1 || mod(opfFailCount, 25) == 0
+                            logMsg(sprintf('Dynamic candidate %d OPF error: %s', candidateNo, ME.message));
+                        end
+                        continue;
+                    end
+
+                    if ~results.success
+                        opfFailCount = opfFailCount + 1;
+                        continue;
+                    end
+
+                    validCount = validCount + 1;
+                    [summaryRow, busRows, branchRows, genRows] = createDynamicLongRecords(validCount, scenario, results, app.busConfig, app.branchConfig, app.genConfig, cfg);
+                    if validCount == 1
+                        summaryRows = summaryRow;
+                        busRowsAll = busRows;
+                        branchRowsAll = branchRows;
+                        genRowsAll = genRows;
+                    else
+                        summaryRows(validCount) = summaryRow;
+                        busRowsAll = [busRowsAll; busRows]; %#ok<AGROW>
+                        branchRowsAll = [branchRowsAll; branchRows]; %#ok<AGROW>
+                        genRowsAll = [genRowsAll; genRows]; %#ok<AGROW>
+                    end
+
+                    scenarioSolved = true;
+                    if validCount == 1 || mod(validCount, max(1, round(cfg.N/10))) == 0 || validCount == cfg.N
+                        app.status.Text = sprintf('Generated %d / %d dynamic scenarios', validCount, cfg.N);
+                        logMsg(sprintf('Generated %d / %d dynamic scenarios. Attempts: %d', validCount, cfg.N, totalAttempts));
+                        drawnow limitrate;
+                    end
+                    break;
+                end
+
+                if ~scenarioSolved
+                    error('Could not generate dynamic candidate %d after %d attempts. Check generator limits, branch ratings, or load ranges.', candidateNo, cfg.maxAttemptsPerScenario);
+                end
+            end
+
+            app.T = table();
+            app.validationTable = table();
+            app.validationSummary = table();
+            app.econTable = table();
+            app.scenarioSummary = struct2table(summaryRows);
+            app.busResultsLong = busRowsAll;
+            app.branchResultsLong = branchRowsAll;
+            app.genResultsLong = genRowsAll;
+
+            updateAllPlots();
+            updateTables();
+            savedFile = saveCurrentResults();
+
+            if ~isempty(savedFile)
+                app.status.Text = sprintf('Done. %d scenarios generated. Saved as %s', height(app.scenarioSummary), savedFile);
+                logMsg(sprintf('Done. Dynamic Excel output: %s', savedFile));
+            else
+                app.status.Text = sprintf('Done. %d scenarios generated.', height(app.scenarioSummary));
+            end
+        catch ME
+            app.status.Text = 'Error.';
+            logMsg(sprintf('ERROR dynamic generation: %s', ME.message));
+            uialert(app.fig, ME.message, 'Dynamic Generation Error');
+        end
+        app.runButton.Enable = 'on';
+    end
+
     function runSensitivityLab()
+        if ~strcmp(string(app.networkTemplate), "Current 4-bus system")
+            msg = 'Dynamic Sensitivity Lab will be added in Phase 2. Current Sensitivity Lab only supports the original 4-bus template.';
+            app.status.Text = 'Sensitivity Lab unavailable.';
+            logMsg(msg);
+            uialert(app.fig, msg, 'Phase 2 Notice');
+            return;
+        end
         try
             app.sensitivityButton.Enable = 'off';
             app.status.Text = 'Running sensitivity lab...';
@@ -544,6 +803,10 @@ app.status = uilabel(topButtonGrid, ...
     end
 
     function savedFile = saveCurrentResults()
+        if app.isDynamicNetworkMode && ~isempty(app.scenarioSummary) && height(app.scenarioSummary) > 0
+            savedFile = saveDynamicResults();
+            return;
+        end
         savedFile = '';
         if isempty(app.T) || height(app.T) == 0
             logMsg('No scenario table to save yet.');
@@ -634,12 +897,80 @@ app.status = uilabel(topButtonGrid, ...
         end
     end
 
+    function savedFile = saveDynamicResults()
+        savedFile = '';
+        if isempty(app.scenarioSummary) || height(app.scenarioSummary) == 0
+            logMsg('No dynamic scenario results to save yet.');
+            return;
+        end
+
+        try
+            outputFile = strtrim(app.outputField.Value);
+            if isempty(outputFile)
+                outputFile = 'dataset_4bus_dashboard.xlsx';
+            end
+
+            stamp = char(datetime('now', 'Format', 'yyyyMMdd_HHmmss'));
+            [p, n, e] = fileparts(outputFile);
+            newName = sprintf('%s_%s%s', n, stamp, e);
+            if isempty(p)
+                outputFile = newName;
+            else
+                outputFile = fullfile(p, newName);
+            end
+
+            if isfile(outputFile)
+                delete(outputFile);
+            end
+
+            writetable(app.scenarioSummary, outputFile, 'Sheet', 'scenario_summary');
+            writetable(app.busResultsLong, outputFile, 'Sheet', 'bus_results_long');
+            writetable(app.branchResultsLong, outputFile, 'Sheet', 'branch_results_long');
+            writetable(app.genResultsLong, outputFile, 'Sheet', 'generator_results_long');
+            writetable(app.busConfig, outputFile, 'Sheet', 'bus_static');
+            writetable(app.branchConfig, outputFile, 'Sheet', 'branch_static');
+            writetable(app.genConfig, outputFile, 'Sheet', 'generator_static');
+            writetable(table(app.dynamicValidationMessages, 'VariableNames', {'message'}), outputFile, 'Sheet', 'network_validation');
+
+            logMsg(sprintf('Saved dynamic Excel file: %s', outputFile));
+            savedFile = outputFile;
+        catch ME
+            logMsg(sprintf('ERROR saving dynamic Excel: %s', ME.message));
+            uialert(app.fig, ME.message, 'Dynamic Save Error');
+        end
+    end
+
     %% -----------------------------
     % UI update functions
     %% -----------------------------
     function updateTables()
-        if ~isempty(app.T)
-            app.dataUITable.Data = firstNRows(app.T, 100);
+        if app.isDynamicNetworkMode && ~isempty(app.scenarioSummary)
+            app.dataSummaryUITable.Data = firstNRows(app.scenarioSummary, 100);
+            app.dataBusUITable.Data = firstNRows(app.busResultsLong, 100);
+            app.dataBranchUITable.Data = firstNRows(app.branchResultsLong, 100);
+            app.dataGenUITable.Data = firstNRows(app.genResultsLong, 100);
+
+            switch app.dataViewDrop.Value
+                case 'Scenario Summary'
+                    app.dataTabGroup.SelectedTab = app.dataSummaryTab;
+                case 'Bus Results'
+                    app.dataTabGroup.SelectedTab = app.dataBusTab;
+                case 'Branch Results'
+                    app.dataTabGroup.SelectedTab = app.dataBranchTab;
+                case 'Generator Results'
+                    app.dataTabGroup.SelectedTab = app.dataGenTab;
+            end
+        elseif ~isempty(app.T)
+            app.dataSummaryUITable.Data = firstNRows(app.T, 100);
+            app.dataBusUITable.Data = table();
+            app.dataBranchUITable.Data = table();
+            app.dataGenUITable.Data = table();
+            app.dataTabGroup.SelectedTab = app.dataSummaryTab;
+        else
+            app.dataSummaryUITable.Data = table();
+            app.dataBusUITable.Data = table();
+            app.dataBranchUITable.Data = table();
+            app.dataGenUITable.Data = table();
         end
         % Econometric output table removed intentionally.
         % This tab now focuses on direct input-output scatter relations.
@@ -653,6 +984,11 @@ app.status = uilabel(topButtonGrid, ...
     end
 
     function updateAllPlots()
+        if app.isDynamicNetworkMode && ~isempty(app.scenarioSummary) && height(app.scenarioSummary) > 0
+            updateDynamicPlots();
+            return;
+        end
+
         T = app.T;
         if isempty(T) || height(T) == 0
             return;
@@ -759,6 +1095,145 @@ app.status = uilabel(topButtonGrid, ...
         end
     end
 
+    function updateDynamicPlots()
+        T = app.scenarioSummary;
+        if isempty(T) || height(T) == 0
+            return;
+        end
+
+        cla(app.axLoadHist); cla(app.axDlmpHist); cla(app.axVoltage); cla(app.axLoading);
+        cla(app.axBus2DlmpDemand); cla(app.axBus3DlmpDemand); cla(app.axBus4DlmpDemand);
+        cla(app.axCostOLS); cla(app.axLossDemand); cla(app.axC2LDemand);
+        cla(app.axValErrors); cla(app.axFailReasons);
+
+        histogram(app.axLoadHist, T.total_Pd_MW, max(10, round(sqrt(height(T)))));
+        xlabel(app.axLoadHist, 'Total Pd [MW]');
+        ylabel(app.axLoadHist, 'Count');
+        title(app.axLoadHist, 'Total Demand Distribution');
+        grid(app.axLoadHist, 'off');
+
+        busLong = app.busResultsLong;
+        histogram(app.axDlmpHist, busLong.DLMP_LAM_P, max(10, round(sqrt(height(busLong)))));
+        xlabel(app.axDlmpHist, 'DLMP LAM_P');
+        ylabel(app.axDlmpHist, 'Count');
+        title(app.axDlmpHist, 'DLMP Distribution Across All Buses');
+        grid(app.axDlmpHist, 'off');
+
+        meanVm = groupsummary(busLong, 'bus_id', 'mean', 'Vm_pu');
+        minVm = groupsummary(busLong, 'bus_id', 'min', 'Vm_pu');
+        maxVm = groupsummary(busLong, 'bus_id', 'max', 'Vm_pu');
+        plot(app.axVoltage, meanVm.bus_id, meanVm.mean_Vm_pu, '-o');
+        hold(app.axVoltage, 'on');
+        plot(app.axVoltage, minVm.bus_id, minVm.min_Vm_pu, '--');
+        plot(app.axVoltage, maxVm.bus_id, maxVm.max_Vm_pu, '--');
+        hold(app.axVoltage, 'off');
+        xlabel(app.axVoltage, 'Bus');
+        ylabel(app.axVoltage, 'Vm [p.u.]');
+        title(app.axVoltage, 'Voltage Mean / Min / Max');
+        legend(app.axVoltage, {'Mean','Min','Max'}, 'Location', 'best');
+        grid(app.axVoltage, 'off');
+
+        plot(app.axLoading, app.branchResultsLong.scenario_id, app.branchResultsLong.loading_percent, '.');
+        xlabel(app.axLoading, 'Scenario');
+        ylabel(app.axLoading, 'Loading [%]');
+        title(app.axLoading, 'Branch Loading by Scenario');
+        grid(app.axLoading, 'off');
+
+        plotInputOutputScatter(app.axBus2DlmpDemand, T.total_Pd_MW, T.objective_cost, ...
+            'Total Pd [MW]', 'Objective Cost', 'Objective Cost vs Total Demand');
+
+        plotInputOutputScatter(app.axBus3DlmpDemand, T.total_Pd_MW, T.DLMP_spread_LAM_P, ...
+            'Total Pd [MW]', 'DLMP Spread LAM_P', 'DLMP Spread vs Total Demand');
+
+        plotInputOutputScatter(app.axBus4DlmpDemand, T.total_Pd_MW, T.total_P_loss_MW, ...
+            'Total Pd [MW]', 'Total P Loss [MW]', 'Losses vs Total Demand');
+
+        plotInputOutputScatter(app.axCostOLS, T.total_Pd_MW, T.local_generation_share, ...
+            'Total Pd [MW]', 'Local Generation Share', 'Local Generation Share vs Total Demand');
+
+        plotInputOutputScatter(app.axLossDemand, T.total_Pd_MW, T.mean_DLMP_LAM_P, ...
+            'Total Pd [MW]', 'Mean DLMP LAM_P', 'Mean DLMP vs Total Demand');
+
+        plotInputOutputScatter(app.axC2LDemand, T.total_Pd_MW, T.total_Q_loss_MVAr, ...
+            'Total Pd [MW]', 'Total Q Loss [MVAr]', 'Reactive Losses vs Total Demand');
+
+        app.validationUITable.Data = table();
+        app.validationSummaryArea.Value = {'Dynamic RUNPF validation is not implemented in Phase 1.'};
+        text(app.axValErrors, 0.1, 0.5, 'Dynamic mode uses long-format outputs.', 'Units', 'normalized');
+        axis(app.axValErrors, 'off');
+        text(app.axFailReasons, 0.1, 0.5, 'Network preview remains in the Network Builder tab.', 'Units', 'normalized');
+        axis(app.axFailReasons, 'off');
+    end
+
+    function buildPreviewNetwork()
+        defaults = readQuickSetupDefaults();
+        template = string(app.networkTemplateDrop.Value);
+        topology = string(app.topologyDrop.Value);
+        app.networkTemplate = template;
+        app.topologyType = topology;
+
+        [busConfig, branchConfig, genConfig, messages] = createNetworkConfigFromQuickSetup( ...
+            template, topology, round(app.nLoadBusField.Value), round(app.nDERBusField.Value), ...
+            round(app.nProsumerBusField.Value), defaults);
+
+        app.busConfig = busConfig;
+        app.branchConfig = branchConfig;
+        app.genConfig = genConfig;
+        app.dynamicValidationMessages = string(messages(:));
+        updateNetworkBuilderState(false);
+    end
+
+    function useThisNetwork()
+        app.busConfig = app.busConfigUITable.Data;
+        app.branchConfig = app.branchConfigUITable.Data;
+        app.genConfig = app.genConfigUITable.Data;
+        updateNetworkBuilderState(true);
+    end
+
+    function updateNetworkBuilderState(activateDynamicMode)
+        [isValid, messages] = validateNetworkConfig(app.busConfig, app.branchConfig, app.genConfig);
+        messages = [app.dynamicValidationMessages; messages];
+        messages = messages(strlength(messages) > 0);
+        if isempty(messages)
+            messages = "Network configuration looks ready.";
+        end
+        app.networkValidationArea.Value = cellstr(messages);
+        app.networkQuickSummary.Text = sprintf('%d buses | %d branches | %d generators', ...
+            height(app.busConfig), height(app.branchConfig), height(app.genConfig));
+
+        app.busConfigUITable.Data = app.busConfig;
+        app.branchConfigUITable.Data = app.branchConfig;
+        app.genConfigUITable.Data = app.genConfig;
+        plotNetworkPreview(app.axNetworkPreview, app.busConfig, app.branchConfig);
+
+        if activateDynamicMode
+            if ~isValid
+                app.dynamicValidationMessages = messages;
+                uialert(app.fig, strjoin(cellstr(messages), newline), 'Invalid Network');
+                return;
+            end
+
+            cfg = readConfigFromUI();
+            app.dynamic_mpc = buildMPCFromConfig(app.busConfig, app.branchConfig, app.genConfig, cfg.dynamicBaseMVA);
+            app.dynamicValidationMessages = messages;
+            app.isDynamicNetworkMode = true;
+            app.status.Text = sprintf('Using network: %s', app.networkTemplate);
+            logMsg(sprintf('Dynamic network activated: %s', app.networkTemplate));
+        end
+    end
+
+    function defaults = readQuickSetupDefaults()
+        defaults = struct();
+        defaults.loadPdRange = parseRange(app.defaultLoadRangeField.Value, 'Default load Pd range');
+        defaults.pfRange = parseRange(app.defaultPfRangeField.Value, 'Default PF range');
+        defaults.branch_r = str2double(app.defaultBranchRField.Value);
+        defaults.branch_x = str2double(app.defaultBranchXField.Value);
+        defaults.branch_b = 0;
+        defaults.branch_rateA = str2double(app.defaultBranchRateField.Value);
+        defaults.base_kV = str2double(app.defaultBaseKVField.Value);
+        defaults.baseMVA = str2double(app.defaultBaseMVAField.Value);
+    end
+
     function plotSensitivityResults(S)
         cla(app.axSensPd2); cla(app.axSensPd4); cla(app.axSensLocation); cla(app.axSensSwap);
 
@@ -857,6 +1332,7 @@ app.status = uilabel(topButtonGrid, ...
         cfg.outputFile      = strtrim(app.outputField.Value);
         cfg.sensOutputFile  = strtrim(app.sensOutputField.Value);
         cfg.maxAttemptsPerScenario = 100;
+        cfg.dynamicBaseMVA  = str2double(app.defaultBaseMVAField.Value);
 
         r = struct();
         r.Pd2 = parseRange(app.pd2Field.Value, 'Bus 2 Pd');
@@ -883,7 +1359,12 @@ app.status = uilabel(topButtonGrid, ...
         if isempty(cfg.sensOutputFile)
             cfg.sensOutputFile = 'sensitivity_4bus_dashboard.xlsx';
         end
+        if ~isfinite(cfg.dynamicBaseMVA) || cfg.dynamicBaseMVA <= 0
+            cfg.dynamicBaseMVA = 10;
+        end
     end
+
+    buildPreviewNetwork();
 end
 
 %% ========================================================================
@@ -964,11 +1445,577 @@ function scenario = fixedScenarioFromConfig(cfg)
     scenario.offer_pdf = "Fixed";
 end
 
+function [busConfig, branchConfig, genConfig, messages] = createNetworkConfigFromQuickSetup(template, topology, nLoad, nDER, nProsumer, defaults)
+    messages = strings(0, 1);
+    template = string(template);
+    topology = string(topology);
+
+    switch template
+        case "Current 4-bus system"
+            busConfig = table( ...
+                [1; 2; 3; 4], ...
+                ["Slack/Grid"; "Load"; "DER"; "Prosumer"], ...
+                [3; 1; 2; 2], ...
+                [0; 1.6; 0; 0.5], ...
+                [0; 2.4; 0; 1.1], ...
+                [1.0; 0.88; NaN; 0.88], ...
+                [1.0; 0.98; NaN; 0.98], ...
+                repmat(33, 4, 1), ...
+                repmat(0.95, 4, 1), ...
+                repmat(1.05, 4, 1), ...
+                'VariableNames', {'bus_id','bus_role','bus_type','Pd_min_MW','Pd_max_MW','PF_min','PF_max','base_kV','Vmin_pu','Vmax_pu'});
+
+            branchConfig = table( ...
+                [1; 2; 3], [1; 2; 3], [2; 3; 4], ...
+                [0.00588; 0.00441; 0.00294], ...
+                [0.00698; 0.00523; 0.00349], ...
+                [0; 0; 0], [5.0; 4.0; 3.0], [1; 1; 1], ...
+                'VariableNames', {'branch_id','from_bus','to_bus','r_pu','x_pu','b_pu','rateA_MVA','status'});
+
+            genConfig = table( ...
+                [1; 2; 3], [1; 3; 4], ["Grid"; "DER"; "Prosumer"], ...
+                [0; 0; 0], [20; 1.3; 1.2], ...
+                [-20; -2; -1], [20; 2; 1], ...
+                [1; 1; 1], ...
+                [0.020; 0.015; 0.010], [0.020; 0.015; 0.010], ...
+                [90; 35; 25], [90; 35; 25], ...
+                [0; 0; 0], [0; 0; 0], ...
+                'VariableNames', {'gen_id','bus_id','gen_role','Pmin_MW','Pmax_MW','Qmin_MVAr','Qmax_MVAr','Vg_pu','c2_min','c2_max','c1_min','c1_max','c0_min','c0_max'});
+            messages(end+1) = "Loaded the original 4-bus template.";
+
+        otherwise
+            totalBuses = 1 + max(0, nLoad) + max(0, nDER) + max(0, nProsumer);
+            bus_id = (1:totalBuses)';
+            bus_role = strings(totalBuses, 1);
+            bus_role(1) = "Slack/Grid";
+            idx = 2;
+            for i = 1:max(0, nLoad)
+                bus_role(idx) = "Load";
+                idx = idx + 1;
+            end
+            for i = 1:max(0, nDER)
+                bus_role(idx) = "DER";
+                idx = idx + 1;
+            end
+            for i = 1:max(0, nProsumer)
+                bus_role(idx) = "Prosumer";
+                idx = idx + 1;
+            end
+            if template == "Custom blank network" && totalBuses == 1
+                messages(end+1) = "Custom blank network starts with one slack bus. Edit the tables to add buses and branches.";
+            end
+
+            bus_type = arrayfun(@roleToBusType, bus_role);
+            Pd_min = zeros(totalBuses, 1);
+            Pd_max = zeros(totalBuses, 1);
+            PF_min = NaN(totalBuses, 1);
+            PF_max = NaN(totalBuses, 1);
+            for i = 1:totalBuses
+                if isLoadCapableBusRole(bus_role(i))
+                    Pd_min(i) = defaults.loadPdRange(1);
+                    Pd_max(i) = defaults.loadPdRange(2);
+                    PF_min(i) = defaults.pfRange(1);
+                    PF_max(i) = defaults.pfRange(2);
+                end
+            end
+            busConfig = table(bus_id, bus_role, bus_type, Pd_min, Pd_max, PF_min, PF_max, ...
+                repmat(defaults.base_kV, totalBuses, 1), repmat(0.95, totalBuses, 1), repmat(1.05, totalBuses, 1), ...
+                'VariableNames', {'bus_id','bus_role','bus_type','Pd_min_MW','Pd_max_MW','PF_min','PF_max','base_kV','Vmin_pu','Vmax_pu'});
+
+            branchConfig = createBranchConfigForTopology(bus_id, topology, defaults);
+            if topology == "Custom parent list"
+                messages(end+1) = "Custom parent list is not fully automated in Phase 1. Edit the Branch Config table directly.";
+            end
+
+            genRows = [];
+            genRoles = strings(0, 1);
+            genBus = [];
+            if totalBuses >= 1
+                genBus(end+1, 1) = 1; %#ok<AGROW>
+                genRoles(end+1, 1) = "Grid"; %#ok<AGROW>
+            end
+            for i = 1:height(busConfig)
+                if busConfig.bus_role(i) == "DER"
+                    genBus(end+1, 1) = busConfig.bus_id(i); %#ok<AGROW>
+                    genRoles(end+1, 1) = "DER"; %#ok<AGROW>
+                elseif busConfig.bus_role(i) == "Prosumer"
+                    genBus(end+1, 1) = busConfig.bus_id(i); %#ok<AGROW>
+                    genRoles(end+1, 1) = "Prosumer"; %#ok<AGROW>
+                end
+            end
+            nGen = numel(genBus);
+            genRows = (1:nGen)';
+            Pmin = zeros(nGen, 1);
+            Pmax = zeros(nGen, 1);
+            Qmin = zeros(nGen, 1);
+            Qmax = zeros(nGen, 1);
+            Vg = ones(nGen, 1);
+            c2min = zeros(nGen, 1);
+            c2max = zeros(nGen, 1);
+            c1min = zeros(nGen, 1);
+            c1max = zeros(nGen, 1);
+            c0min = zeros(nGen, 1);
+            c0max = zeros(nGen, 1);
+            for i = 1:nGen
+                switch genRoles(i)
+                    case "Grid"
+                        Pmax(i) = 20;
+                        Qmin(i) = -20;
+                        Qmax(i) = 20;
+                        c2min(i) = 0.015; c2max(i) = 0.015;
+                        c1min(i) = 80; c1max(i) = 80;
+                    case "DER"
+                        Pmax(i) = 1.5;
+                        Qmin(i) = -2;
+                        Qmax(i) = 2;
+                        c2min(i) = 0.010; c2max(i) = 0.010;
+                        c1min(i) = 30; c1max(i) = 30;
+                    otherwise
+                        Pmax(i) = 1.2;
+                        Qmin(i) = -1;
+                        Qmax(i) = 1;
+                        c2min(i) = 0.005; c2max(i) = 0.005;
+                        c1min(i) = 20; c1max(i) = 20;
+                end
+            end
+            genConfig = table(genRows, genBus, genRoles, Pmin, Pmax, Qmin, Qmax, Vg, ...
+                c2min, c2max, c1min, c1max, c0min, c0max, ...
+                'VariableNames', {'gen_id','bus_id','gen_role','Pmin_MW','Pmax_MW','Qmin_MVAr','Qmax_MVAr','Vg_pu','c2_min','c2_max','c1_min','c1_max','c0_min','c0_max'});
+            messages(end+1) = sprintf('Built %d buses, %d branches, and %d generators.', height(busConfig), height(branchConfig), height(genConfig));
+    end
+end
+
+function branchConfig = createBranchConfigForTopology(bus_id, topology, defaults)
+    nBus = numel(bus_id);
+    branch_id = [];
+    from_bus = [];
+    to_bus = [];
+
+    if nBus <= 1
+        branchConfig = table(zeros(0,1), zeros(0,1), zeros(0,1), zeros(0,1), zeros(0,1), zeros(0,1), zeros(0,1), zeros(0,1), ...
+            'VariableNames', {'branch_id','from_bus','to_bus','r_pu','x_pu','b_pu','rateA_MVA','status'});
+        return;
+    end
+
+    switch string(topology)
+        case "Star feeder"
+            for k = 2:nBus
+                branch_id(end+1, 1) = numel(branch_id) + 1; %#ok<AGROW>
+                from_bus(end+1, 1) = bus_id(1); %#ok<AGROW>
+                to_bus(end+1, 1) = bus_id(k); %#ok<AGROW>
+            end
+        otherwise
+            for k = 1:(nBus - 1)
+                branch_id(end+1, 1) = numel(branch_id) + 1; %#ok<AGROW>
+                from_bus(end+1, 1) = bus_id(k); %#ok<AGROW>
+                to_bus(end+1, 1) = bus_id(k + 1); %#ok<AGROW>
+            end
+    end
+
+    branchConfig = table(branch_id, from_bus, to_bus, ...
+        repmat(defaults.branch_r, numel(branch_id), 1), ...
+        repmat(defaults.branch_x, numel(branch_id), 1), ...
+        repmat(defaults.branch_b, numel(branch_id), 1), ...
+        repmat(defaults.branch_rateA, numel(branch_id), 1), ...
+        ones(numel(branch_id), 1), ...
+        'VariableNames', {'branch_id','from_bus','to_bus','r_pu','x_pu','b_pu','rateA_MVA','status'});
+end
+
 function wideRange = sensitivityWideRange(rangeIn)
     allP = [rangeIn.Pd2, rangeIn.Pd4];
     wideRange = rangeIn;
     wideRange.Pd2 = [min(allP), max(allP)];
     wideRange.Pd4 = [min(allP), max(allP)];
+end
+
+function scenario = generateDynamicScenarioFromConfig(cfg, busConfig, genConfig)
+    nBus = height(busConfig);
+    busInputs = table('Size', [nBus 5], ...
+        'VariableTypes', {'double','string','double','double','double'}, ...
+        'VariableNames', {'bus_id','bus_role','Pd_MW','Qd_MVAr','pf'});
+    for i = 1:nBus
+        role = string(busConfig.bus_role(i));
+        busInputs.bus_id(i) = busConfig.bus_id(i);
+        busInputs.bus_role(i) = role;
+        if isLoadCapableBusRole(role)
+            Pd = sampleByPDF([busConfig.Pd_min_MW(i), busConfig.Pd_max_MW(i)], cfg.loadPDF);
+            pf = sampleByPDF([busConfig.PF_min(i), busConfig.PF_max(i)], cfg.pfPDF);
+            busInputs.Pd_MW(i) = Pd;
+            busInputs.Qd_MVAr(i) = calcQfromPandPFDashboard(Pd, pf);
+            busInputs.pf(i) = pf;
+        else
+            busInputs.Pd_MW(i) = 0;
+            busInputs.Qd_MVAr(i) = 0;
+            busInputs.pf(i) = NaN;
+        end
+    end
+
+    nGen = height(genConfig);
+    genInputs = table('Size', [nGen 6], ...
+        'VariableTypes', {'double','double','string','double','double','double'}, ...
+        'VariableNames', {'gen_id','bus_id','gen_role','c2','c1','c0'});
+    for i = 1:nGen
+        genInputs.gen_id(i) = genConfig.gen_id(i);
+        genInputs.bus_id(i) = genConfig.bus_id(i);
+        genInputs.gen_role(i) = string(genConfig.gen_role(i));
+        genInputs.c2(i) = sampleByPDF([genConfig.c2_min(i), genConfig.c2_max(i)], cfg.offerPDF);
+        genInputs.c1(i) = sampleByPDF([genConfig.c1_min(i), genConfig.c1_max(i)], cfg.offerPDF);
+        genInputs.c0(i) = sampleByPDF([genConfig.c0_min(i), genConfig.c0_max(i)], cfg.offerPDF);
+    end
+
+    scenario = struct();
+    scenario.busInputs = busInputs;
+    scenario.genInputs = genInputs;
+    scenario.load_pdf = string(cfg.loadPDF);
+    scenario.pf_pdf = string(cfg.pfPDF);
+    scenario.offer_pdf = string(cfg.offerPDF);
+end
+
+function mpc = applyDynamicScenarioToMPC(base_mpc, scenario)
+    define_constants;
+    mpc = base_mpc;
+
+    for i = 1:height(scenario.busInputs)
+        bus_id = scenario.busInputs.bus_id(i);
+        busRow = find(mpc.bus(:, BUS_I) == bus_id, 1);
+        if ~isempty(busRow)
+            mpc.bus(busRow, PD) = scenario.busInputs.Pd_MW(i);
+            mpc.bus(busRow, QD) = scenario.busInputs.Qd_MVAr(i);
+        end
+    end
+
+    for i = 1:height(scenario.genInputs)
+        gen_id = scenario.genInputs.gen_id(i);
+        genRow = find(mpc.gen_aux_id == gen_id, 1);
+        if isempty(genRow)
+            genRow = gen_id;
+        end
+        mpc.gencost(genRow, 5) = scenario.genInputs.c2(i);
+        mpc.gencost(genRow, 6) = scenario.genInputs.c1(i);
+        mpc.gencost(genRow, 7) = scenario.genInputs.c0(i);
+    end
+end
+
+function mpc = buildMPCFromConfig(busConfig, branchConfig, genConfig, baseMVA)
+    define_constants;
+    mpc = struct();
+    mpc.version = '2';
+    mpc.baseMVA = baseMVA;
+
+    nBus = height(busConfig);
+    mpc.bus = zeros(nBus, 13);
+    for i = 1:nBus
+        mpc.bus(i, :) = [busConfig.bus_id(i), busConfig.bus_type(i), 0, 0, 0, 0, 1, 1.0, 0, ...
+            busConfig.base_kV(i), 1, busConfig.Vmax_pu(i), busConfig.Vmin_pu(i)];
+    end
+
+    nBranch = height(branchConfig);
+    mpc.branch = zeros(nBranch, 13);
+    for i = 1:nBranch
+        rateA = branchConfig.rateA_MVA(i);
+        mpc.branch(i, :) = [branchConfig.from_bus(i), branchConfig.to_bus(i), branchConfig.r_pu(i), ...
+            branchConfig.x_pu(i), branchConfig.b_pu(i), rateA, rateA, rateA, 0, 0, branchConfig.status(i), -360, 360];
+    end
+
+    nGen = height(genConfig);
+    mpc.gen = zeros(nGen, 21);
+    mpc.gencost = zeros(nGen, 7);
+    mpc.gen_aux_id = genConfig.gen_id;
+    for i = 1:nGen
+        Pmin = genConfig.Pmin_MW(i);
+        Pmax = genConfig.Pmax_MW(i);
+        Qmin = genConfig.Qmin_MVAr(i);
+        Qmax = genConfig.Qmax_MVAr(i);
+        initPg = min(max(0.1 * Pmax, Pmin), Pmax);
+        mpc.gen(i, :) = [genConfig.bus_id(i), initPg, 0, Qmax, Qmin, genConfig.Vg_pu(i), baseMVA, 1, Pmax, Pmin, ...
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        c2 = mean([genConfig.c2_min(i), genConfig.c2_max(i)], 'omitnan');
+        c1 = mean([genConfig.c1_min(i), genConfig.c1_max(i)], 'omitnan');
+        c0 = mean([genConfig.c0_min(i), genConfig.c0_max(i)], 'omitnan');
+        mpc.gencost(i, :) = [2, 0, 0, 3, c2, c1, c0];
+    end
+end
+
+function [summaryRow, busRows, branchRows, genRows] = createDynamicLongRecords(scenario_id, scenario, results, busConfig, branchConfig, genConfig, cfg)
+    define_constants;
+
+    totalPd = sum(scenario.busInputs.Pd_MW, 'omitnan');
+    totalQd = sum(scenario.busInputs.Qd_MVAr, 'omitnan');
+    branchPf = results.branch(:, PF);
+    branchPt = results.branch(:, PT);
+    branchQf = results.branch(:, QF);
+    branchQt = results.branch(:, QT);
+    totalPloss = sum(branchPf + branchPt);
+    totalQloss = sum(branchQf + branchQt);
+    branchLoading = zeros(size(branchPf));
+    for i = 1:numel(branchLoading)
+        Sf = sqrt(branchPf(i)^2 + branchQf(i)^2);
+        St = sqrt(branchPt(i)^2 + branchQt(i)^2);
+        branchLoading(i) = 100 * max(Sf, St) / results.branch(i, RATE_A);
+    end
+    meanLamP = mean(results.bus(:, LAM_P), 'omitnan');
+    spreadLamP = max(results.bus(:, LAM_P)) - min(results.bus(:, LAM_P));
+    meanLamQ = mean(results.bus(:, LAM_Q), 'omitnan');
+    spreadLamQ = max(results.bus(:, LAM_Q)) - min(results.bus(:, LAM_Q));
+
+    localMask = strcmp(string(genConfig.gen_role), "DER") | strcmp(string(genConfig.gen_role), "Prosumer");
+    localGeneration = sum(results.gen(localMask, PG), 'omitnan');
+    totalGeneration = sum(results.gen(:, PG), 'omitnan');
+
+    summaryRow = struct();
+    summaryRow.scenario_id = scenario_id;
+    summaryRow.opf_success = results.success;
+    summaryRow.objective_cost = results.f;
+    summaryRow.load_pdf = scenario.load_pdf;
+    summaryRow.pf_pdf = scenario.pf_pdf;
+    summaryRow.offer_pdf = scenario.offer_pdf;
+    summaryRow.N_requested = cfg.N;
+    summaryRow.total_Pd_MW = totalPd;
+    summaryRow.total_Qd_MVAr = totalQd;
+    summaryRow.total_P_loss_MW = totalPloss;
+    summaryRow.total_Q_loss_MVAr = totalQloss;
+    summaryRow.max_branch_loading_percent = max(branchLoading, [], 'omitnan');
+    summaryRow.mean_DLMP_LAM_P = meanLamP;
+    summaryRow.DLMP_spread_LAM_P = spreadLamP;
+    summaryRow.mean_DLMP_LAM_Q = meanLamQ;
+    summaryRow.DLMP_spread_LAM_Q = spreadLamQ;
+    summaryRow.local_generation_MW = localGeneration;
+    summaryRow.local_generation_share = localGeneration / max(eps, totalGeneration);
+
+    nBus = height(busConfig);
+    busRows = table('Size', [nBus 11], ...
+        'VariableTypes', {'double','double','string','double','double','double','double','double','double','double','double'}, ...
+        'VariableNames', {'scenario_id','bus_id','bus_role','bus_type','Pd_MW','Qd_MVAr','pf','Vm_pu','Va_deg','DLMP_LAM_P','DLMP_LAM_Q'});
+    for i = 1:nBus
+        bus_id = busConfig.bus_id(i);
+        busRowIdx = find(results.bus(:, BUS_I) == bus_id, 1);
+        inIdx = find(scenario.busInputs.bus_id == bus_id, 1);
+        busRows.scenario_id(i) = scenario_id;
+        busRows.bus_id(i) = bus_id;
+        busRows.bus_role(i) = string(busConfig.bus_role(i));
+        busRows.bus_type(i) = busConfig.bus_type(i);
+        busRows.Pd_MW(i) = scenario.busInputs.Pd_MW(inIdx);
+        busRows.Qd_MVAr(i) = scenario.busInputs.Qd_MVAr(inIdx);
+        busRows.pf(i) = scenario.busInputs.pf(inIdx);
+        busRows.Vm_pu(i) = results.bus(busRowIdx, VM);
+        busRows.Va_deg(i) = results.bus(busRowIdx, VA);
+        busRows.DLMP_LAM_P(i) = results.bus(busRowIdx, LAM_P);
+        busRows.DLMP_LAM_Q(i) = results.bus(busRowIdx, LAM_Q);
+    end
+
+    nBranch = height(branchConfig);
+    branchRows = table('Size', [nBranch 11], ...
+        'VariableTypes', {'double','double','double','double','double','double','double','double','double','double','double'}, ...
+        'VariableNames', {'scenario_id','branch_id','from_bus','to_bus','Pf_MW','Pt_MW','Qf_MVAr','Qt_MVAr','P_loss_MW','Q_loss_MVAr','loading_percent'});
+    branchRows.rateA_MVA = zeros(nBranch, 1);
+    for i = 1:nBranch
+        branchRows.scenario_id(i) = scenario_id;
+        branchRows.branch_id(i) = branchConfig.branch_id(i);
+        branchRows.from_bus(i) = branchConfig.from_bus(i);
+        branchRows.to_bus(i) = branchConfig.to_bus(i);
+        branchRows.Pf_MW(i) = results.branch(i, PF);
+        branchRows.Pt_MW(i) = results.branch(i, PT);
+        branchRows.Qf_MVAr(i) = results.branch(i, QF);
+        branchRows.Qt_MVAr(i) = results.branch(i, QT);
+        branchRows.P_loss_MW(i) = results.branch(i, PF) + results.branch(i, PT);
+        branchRows.Q_loss_MVAr(i) = results.branch(i, QF) + results.branch(i, QT);
+        branchRows.loading_percent(i) = branchLoading(i);
+        branchRows.rateA_MVA(i) = results.branch(i, RATE_A);
+    end
+
+    nGen = height(genConfig);
+    genRows = table('Size', [nGen 13], ...
+        'VariableTypes', {'double','double','double','string','double','double','double','double','double','double','double','double','double'}, ...
+        'VariableNames', {'scenario_id','gen_id','bus_id','gen_role','Pg_MW','Qg_MVAr','Pmin_MW','Pmax_MW','Qmin_MVAr','Qmax_MVAr','c2','c1','c0'});
+    for i = 1:nGen
+        genRows.scenario_id(i) = scenario_id;
+        genRows.gen_id(i) = genConfig.gen_id(i);
+        genRows.bus_id(i) = genConfig.bus_id(i);
+        genRows.gen_role(i) = string(genConfig.gen_role(i));
+        genRows.Pg_MW(i) = results.gen(i, PG);
+        genRows.Qg_MVAr(i) = results.gen(i, QG);
+        genRows.Pmin_MW(i) = genConfig.Pmin_MW(i);
+        genRows.Pmax_MW(i) = genConfig.Pmax_MW(i);
+        genRows.Qmin_MVAr(i) = genConfig.Qmin_MVAr(i);
+        genRows.Qmax_MVAr(i) = genConfig.Qmax_MVAr(i);
+        genInputIdx = find(scenario.genInputs.gen_id == genConfig.gen_id(i), 1);
+        genRows.c2(i) = scenario.genInputs.c2(genInputIdx);
+        genRows.c1(i) = scenario.genInputs.c1(genInputIdx);
+        genRows.c0(i) = scenario.genInputs.c0(genInputIdx);
+    end
+end
+
+function [isValid, messages] = validateNetworkConfig(busConfig, branchConfig, genConfig)
+    messages = strings(0, 1);
+    isValid = true;
+
+    if isempty(busConfig) || height(busConfig) == 0
+        isValid = false;
+        messages(end+1) = "Bus Config must contain at least one bus.";
+        return;
+    end
+
+    bus_id = busConfig.bus_id;
+    if numel(unique(bus_id)) ~= numel(bus_id)
+        isValid = false;
+        messages(end+1) = "All bus IDs must be unique.";
+    end
+
+    slackMask = strcmp(string(busConfig.bus_role), "Slack/Grid");
+    if nnz(slackMask) ~= 1
+        isValid = false;
+        messages(end+1) = "Exactly one Slack/Grid bus is required.";
+    end
+    if nnz(busConfig.bus_type == 3) ~= 1
+        isValid = false;
+        messages(end+1) = "Exactly one MATPOWER slack bus type (3) is required.";
+    end
+
+    if any(busConfig.Vmax_pu <= busConfig.Vmin_pu)
+        isValid = false;
+        messages(end+1) = "Each bus must satisfy Vmax_pu > Vmin_pu.";
+    end
+    if any(busConfig.Pd_min_MW > busConfig.Pd_max_MW)
+        isValid = false;
+        messages(end+1) = "Each bus must satisfy Pd_min_MW <= Pd_max_MW.";
+    end
+
+    for i = 1:height(busConfig)
+        role = string(busConfig.bus_role(i));
+        if roleToBusType(role) ~= busConfig.bus_type(i)
+            isValid = false;
+            messages(end+1) = sprintf('Bus %d has a bus_type that does not match role %s.', busConfig.bus_id(i), role);
+        end
+        if isLoadCapableBusRole(role)
+            if ~(isfinite(busConfig.PF_min(i)) && isfinite(busConfig.PF_max(i)) && ...
+                    busConfig.PF_min(i) > 0 && busConfig.PF_min(i) <= 1 && ...
+                    busConfig.PF_max(i) > 0 && busConfig.PF_max(i) <= 1)
+                isValid = false;
+                messages(end+1) = sprintf('Bus %d must have PF_min and PF_max inside (0,1].', busConfig.bus_id(i));
+            end
+        end
+    end
+
+    if ~isempty(branchConfig)
+        if any(~ismember(branchConfig.from_bus, bus_id)) || any(~ismember(branchConfig.to_bus, bus_id))
+            isValid = false;
+            messages(end+1) = "All branch endpoints must reference existing buses.";
+        end
+        if any(branchConfig.from_bus == branchConfig.to_bus)
+            isValid = false;
+            messages(end+1) = "Branches cannot connect a bus to itself.";
+        end
+        if any(branchConfig.r_pu < 0) || any(branchConfig.x_pu < 0) || any(branchConfig.rateA_MVA <= 0)
+            isValid = false;
+            messages(end+1) = "Each branch must satisfy r_pu >= 0, x_pu >= 0, and rateA_MVA > 0.";
+        end
+        if height(busConfig) > 1
+            fromIdx = zeros(height(branchConfig), 1);
+            toIdx = zeros(height(branchConfig), 1);
+            for k = 1:height(branchConfig)
+                fromIdx(k) = find(bus_id == branchConfig.from_bus(k), 1);
+                toIdx(k) = find(bus_id == branchConfig.to_bus(k), 1);
+            end
+            G = graph(fromIdx, toIdx);
+            components = conncomp(G);
+            if numnodes(G) ~= height(busConfig) || numel(unique(components)) ~= 1
+                isValid = false;
+                messages(end+1) = "Network must be connected.";
+            end
+        end
+    elseif height(busConfig) > 1
+        isValid = false;
+        messages(end+1) = "Networks with more than one bus need at least one branch.";
+    end
+
+    if any(genConfig.Pmax_MW < genConfig.Pmin_MW) || any(genConfig.Qmax_MVAr < genConfig.Qmin_MVAr)
+        isValid = false;
+        messages(end+1) = "Each generator must satisfy Pmax_MW >= Pmin_MW and Qmax_MVAr >= Qmin_MVAr.";
+    end
+    if any(~ismember(genConfig.bus_id, bus_id))
+        isValid = false;
+        messages(end+1) = "All generator bus IDs must exist in Bus Config.";
+    end
+
+    slackBusIds = busConfig.bus_id(slackMask);
+    if ~isempty(slackBusIds)
+        if ~any(strcmp(string(genConfig.gen_role), "Grid") & genConfig.bus_id == slackBusIds(1))
+            isValid = false;
+            messages(end+1) = "The Slack/Grid bus must have a Grid generator.";
+        end
+    end
+
+    for i = 1:height(busConfig)
+        role = string(busConfig.bus_role(i));
+        busId = busConfig.bus_id(i);
+        switch role
+            case "DER"
+                if ~any(strcmp(string(genConfig.gen_role), "DER") & genConfig.bus_id == busId)
+                    isValid = false;
+                    messages(end+1) = sprintf('DER bus %d must have a DER generator.', busId);
+                end
+            case "Prosumer"
+                if ~any(strcmp(string(genConfig.gen_role), "Prosumer") & genConfig.bus_id == busId)
+                    isValid = false;
+                    messages(end+1) = sprintf('Prosumer bus %d must have a Prosumer generator.', busId);
+                end
+        end
+    end
+
+    if isValid
+        messages(end+1) = "Network validation passed.";
+    end
+end
+
+function plotNetworkPreview(ax, busConfig, branchConfig)
+    cla(ax);
+    if isempty(busConfig) || height(busConfig) == 0
+        title(ax, 'Network Preview');
+        return;
+    end
+
+    if isempty(branchConfig) || height(branchConfig) == 0
+        scatter(ax, 1:height(busConfig), zeros(height(busConfig), 1), 50, 'filled');
+        labels = cellstr(compose('%d %s', busConfig.bus_id, string(busConfig.bus_role)));
+        text(ax, 1:height(busConfig), zeros(height(busConfig), 1), labels);
+        axis(ax, 'off');
+        title(ax, 'Network Preview');
+        return;
+    end
+
+    bus_id = busConfig.bus_id;
+    fromIdx = zeros(height(branchConfig), 1);
+    toIdx = zeros(height(branchConfig), 1);
+    for k = 1:height(branchConfig)
+        fromIdx(k) = find(bus_id == branchConfig.from_bus(k), 1);
+        toIdx(k) = find(bus_id == branchConfig.to_bus(k), 1);
+    end
+    G = graph(fromIdx, toIdx);
+    p = plot(ax, G, 'Layout', 'layered');
+    labels = strings(height(busConfig), 1);
+    for i = 1:height(busConfig)
+        labels(i) = sprintf('%d %s', busConfig.bus_id(i), char(busConfig.bus_role(i)));
+    end
+    p.NodeLabel = cellstr(labels);
+    if height(branchConfig) == numedges(G)
+        p.EdgeLabel = cellstr(string(branchConfig.branch_id));
+    end
+    title(ax, 'Network Preview');
+end
+
+function type = roleToBusType(role)
+    switch string(role)
+        case "Slack/Grid"
+            type = 3;
+        case "Load"
+            type = 1;
+        otherwise
+            type = 2;
+    end
+end
+
+function tf = isLoadCapableBusRole(role)
+    tf = any(strcmp(string(role), ["Load", "Prosumer"]));
 end
 
 function value = sampleByPDF(rangePair, pdfName)
