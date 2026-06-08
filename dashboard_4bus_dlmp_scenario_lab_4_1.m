@@ -24,6 +24,7 @@ function dashboard_4bus_dlmp_scenario_lab_4_1()
     %% -----------------------------
     app = struct();
     app.T = table();
+    app.sensitivityT = table();
     app.validationTable = table();
     app.validationSummary = table();
     app.econTable = table();
@@ -50,11 +51,11 @@ rootGrid.RowSpacing = 8;
 % TOP BUTTON BAR
 % =========================================================
 
-topButtonGrid               = uigridlayout(rootGrid, [1 4]);
+topButtonGrid               = uigridlayout(rootGrid, [1 5]);
 topButtonGrid.Layout.Row    = 1;
 topButtonGrid.Layout.Column = 1;
 
-topButtonGrid.ColumnWidth   = {260, 260, 260, '1x'};
+topButtonGrid.ColumnWidth   = {240, 240, 240, 220, '1x'};
 topButtonGrid.RowHeight     = {'1x'};
 topButtonGrid.Padding       = [0 0 0 0];
 topButtonGrid.ColumnSpacing = 10;
@@ -83,13 +84,21 @@ app.saveButton = uibutton(topButtonGrid, 'push', ...
 app.saveButton.Layout.Row       = 1;
 app.saveButton.Layout.Column    = 3;
 
+app.sensitivityButton = uibutton(topButtonGrid, 'push', ...
+    'Text', 'Run Sensitivity Lab', ...
+    'FontWeight', 'bold', ...
+    'ButtonPushedFcn', @(~, ~) runSensitivityLab());
+
+app.sensitivityButton.Layout.Row    = 1;
+app.sensitivityButton.Layout.Column = 4;
+
 app.status = uilabel(topButtonGrid, ...
     'Text', 'Ready.', ...
     'FontWeight', 'bold', ...
     'HorizontalAlignment', 'left');
 
     app.status.Layout.Row       = 1;
-    app.status.Layout.Column    = 4;
+    app.status.Layout.Column    = 5;
     
     % =========================================================
     % MAIN DASHBOARD AREA
@@ -112,8 +121,8 @@ app.status = uilabel(topButtonGrid, ...
     controlPanel.Layout.Row = 1;
     controlPanel.Layout.Column = 1;
 
-    cg = uigridlayout(controlPanel, [30 2]);
-    cg.RowHeight = repmat({26}, 1, 30);
+    cg = uigridlayout(controlPanel, [31 2]);
+    cg.RowHeight = repmat({26}, 1, 31);
     cg.ColumnWidth = {160, '1x'};
     cg.Padding = [10 10 10 10];
     cg.RowSpacing = 6;
@@ -175,12 +184,15 @@ app.status = uilabel(topButtonGrid, ...
     addLabel(cg, 'Output Excel');
     app.outputField = uieditfield(cg, 'text', 'Value', 'dataset_4bus_dashboard.xlsx');
 
+    addLabel(cg, 'Sensitivity Excel');
+    app.sensOutputField = uieditfield(cg, 'text', 'Value', 'sensitivity_4bus_dashboard.xlsx');
+
     app.sideStatus = uilabel(cg, 'Text', 'Ready.', 'FontWeight', 'bold');
-    app.sideStatus.Layout.Row = 27;
+    app.sideStatus.Layout.Row = 28;
     app.sideStatus.Layout.Column = [1 2];
 
     app.log = uitextarea(cg, 'Editable', 'off', 'Value', {'Ready. Configure inputs and run.'});
-    app.log.Layout.Row = [28 30];
+    app.log.Layout.Row = [29 31];
     app.log.Layout.Column = [1 2];
 
     tabs = uitabgroup(mainGrid);
@@ -190,6 +202,7 @@ app.status = uilabel(topButtonGrid, ...
     app.tabOverview = uitab(tabs, 'Title', 'Overview');
     app.tabEconometrics = uitab(tabs, 'Title', 'Econometric Outputs');
     app.tabValidation = uitab(tabs, 'Title', 'Validation Diagnostics');
+    app.tabSensitivity = uitab(tabs, 'Title', 'Sensitivity Lab');
     app.tabData = uitab(tabs, 'Title', 'Data Preview');
 
     og = uigridlayout(app.tabOverview, [2 2]);
@@ -238,6 +251,13 @@ app.status = uilabel(topButtonGrid, ...
     app.validationSummaryArea = uitextarea(vg, 'Editable', 'off', 'Value', {'No validation result yet.'});
     app.validationSummaryArea.Layout.Row = 2;
     app.validationSummaryArea.Layout.Column = 1;
+
+    sg = uigridlayout(app.tabSensitivity, [2 2]);
+    sg.Padding = [10 10 10 10];
+    app.axSensPd2 = uiaxes(sg); title(app.axSensPd2, 'Bus 2 Pd Sweep'); grid(app.axSensPd2, 'off');
+    app.axSensPd4 = uiaxes(sg); title(app.axSensPd4, 'Bus 4 Pd Sweep'); grid(app.axSensPd4, 'off');
+    app.axSensLocation = uiaxes(sg); title(app.axSensLocation, 'Same Total Demand, Different Load Location'); grid(app.axSensLocation, 'off');
+    app.axSensSwap = uiaxes(sg); title(app.axSensSwap, 'Bus 2 / Bus 4 Pd Swap Effect'); grid(app.axSensSwap, 'off');
 
     dg = uigridlayout(app.tabData, [1 1]);
     dg.Padding = [10 10 10 10];
@@ -355,10 +375,15 @@ app.status = uilabel(topButtonGrid, ...
 
             updateAllPlots();
             updateTables();
-            saveCurrentResults();
+            savedFile = saveCurrentResults();
 
-            app.status.Text = sprintf('Done. %d scenarios generated.', height(app.T));
-            logMsg(sprintf('Done. Excel output: %s', cfg.outputFile));
+            if ~isempty(savedFile)
+                app.status.Text = sprintf('Done. %d scenarios generated. Saved as %s', height(app.T), savedFile);
+                logMsg(sprintf('Done. Excel output: %s', savedFile));
+            else
+                app.status.Text = sprintf('Done. %d scenarios generated.', height(app.T));
+                logMsg(sprintf('Done. Excel output: %s', cfg.outputFile));
+            end
         catch ME
             app.status.Text = 'Error.';
             logMsg(sprintf('ERROR: %s', ME.message));
@@ -400,7 +425,126 @@ app.status = uilabel(topButtonGrid, ...
         end
     end
 
-    function saveCurrentResults()
+    function runSensitivityLab()
+        try
+            app.sensitivityButton.Enable = 'off';
+            app.status.Text = 'Running sensitivity lab...';
+            logMsg('Starting sensitivity lab.');
+            drawnow;
+
+            cfg = readConfigFromUI();
+            baseScenario = fixedScenarioFromConfig(cfg);
+            base_mpc = app.base_mpc;
+            mpopt = mpoption('verbose', 0, 'out.all', 0, 'opf.ac.solver', 'MIPS');
+
+            rows = struct([]);
+            caseCount = 0;
+            wideRange = sensitivityWideRange(cfg.range);
+
+            pd2Vals = linspace(cfg.range.Pd2(1), cfg.range.Pd2(2), 60);
+            for i = 1:numel(pd2Vals)
+                scenario = baseScenario;
+                scenario.Pd2 = pd2Vals(i);
+                scenario.Qd2 = calcQfromPandPFDashboard(scenario.Pd2, scenario.pf2);
+                addSensitivityCase(scenario, "sweep_Pd2", i, "Only Bus 2 Pd changes", cfg.range);
+            end
+
+            pd4Vals = linspace(cfg.range.Pd4(1), cfg.range.Pd4(2), 60);
+            for i = 1:numel(pd4Vals)
+                scenario = baseScenario;
+                scenario.Pd4 = pd4Vals(i);
+                scenario.Qd4 = calcQfromPandPFDashboard(scenario.Pd4, scenario.pf4);
+                addSensitivityCase(scenario, "sweep_Pd4", i, "Only Bus 4 Pd changes", cfg.range);
+            end
+
+            Ptotal = mean(cfg.range.Pd2) + mean(cfg.range.Pd4);
+            minPd2 = max(wideRange.Pd2(1), Ptotal - wideRange.Pd4(2));
+            maxPd2 = min(wideRange.Pd2(2), Ptotal - wideRange.Pd4(1));
+            pd2ShareVals = linspace(minPd2, maxPd2, 60);
+            for i = 1:numel(pd2ShareVals)
+                scenario = baseScenario;
+                scenario.Pd2 = pd2ShareVals(i);
+                scenario.Pd4 = Ptotal - scenario.Pd2;
+                scenario.Qd2 = calcQfromPandPFDashboard(scenario.Pd2, scenario.pf2);
+                scenario.Qd4 = calcQfromPandPFDashboard(scenario.Pd4, scenario.pf4);
+                addSensitivityCase(scenario, "fixed_total_location", i, "Total Pd fixed; Bus 2 / Bus 4 load share changes", wideRange);
+            end
+
+            pd2PairVals = linspace(cfg.range.Pd2(1), cfg.range.Pd2(2), 30);
+            pd4PairVals = linspace(cfg.range.Pd4(1), cfg.range.Pd4(2), 30);
+            for i = 1:numel(pd2PairVals)
+                scenario = baseScenario;
+                scenario.Pd2 = pd2PairVals(i);
+                scenario.Pd4 = pd4PairVals(i);
+                scenario.Qd2 = calcQfromPandPFDashboard(scenario.Pd2, scenario.pf2);
+                scenario.Qd4 = calcQfromPandPFDashboard(scenario.Pd4, scenario.pf4);
+                addSensitivityCase(scenario, "swap_original", i, "Original Pd2/Pd4 placement", wideRange);
+
+                scenario = baseScenario;
+                scenario.Pd2 = pd4PairVals(i);
+                scenario.Pd4 = pd2PairVals(i);
+                scenario.Qd2 = calcQfromPandPFDashboard(scenario.Pd2, scenario.pf2);
+                scenario.Qd4 = calcQfromPandPFDashboard(scenario.Pd4, scenario.pf4);
+                addSensitivityCase(scenario, "swap_swapped", i, "Pd2 and Pd4 values swapped", wideRange);
+            end
+
+            if isempty(rows)
+                error('Sensitivity lab produced no successful OPF cases.');
+            end
+
+            app.sensitivityT = struct2table(rows);
+            app.sensitivityT = addDerivedMetrics(app.sensitivityT);
+            plotSensitivityResults(app.sensitivityT);
+            savedFile = saveSensitivityResults();
+
+            if ~isempty(savedFile)
+                app.status.Text = sprintf('Sensitivity lab done. Saved as %s', savedFile);
+            else
+                app.status.Text = 'Sensitivity lab done.';
+            end
+        catch ME
+            app.status.Text = 'Error.';
+            logMsg(sprintf('ERROR sensitivity lab: %s', ME.message));
+            uialert(app.fig, ME.message, 'Sensitivity Lab Error');
+        end
+        app.sensitivityButton.Enable = 'on';
+
+        function addSensitivityCase(scenario, experimentName, stepNo, noteText, rangeForValidation)
+            [scenario, isValid, validationMessage] = repairAndValidateScenarioDashboard(scenario, rangeForValidation);
+            if ~isValid
+                logMsg(sprintf('Sensitivity case skipped [%s #%d]: %s', char(experimentName), stepNo, validationMessage));
+                return;
+            end
+
+            mpc = applyScenarioToMPCDashboard(base_mpc, scenario);
+            try
+                results = runopf(mpc, mpopt);
+            catch MErunopf
+                logMsg(sprintf('Sensitivity OPF error [%s #%d]: %s', char(experimentName), stepNo, MErunopf.message));
+                return;
+            end
+
+            if ~results.success
+                logMsg(sprintf('Sensitivity OPF failed [%s #%d].', char(experimentName), stepNo));
+                return;
+            end
+
+            caseCount = caseCount + 1;
+            row = createOneRowRecordDashboard(caseCount, scenario, results, 1, cfg);
+            row.experiment = string(experimentName);
+            row.step_no = stepNo;
+            row.note = string(noteText);
+
+            if caseCount == 1
+                rows = row;
+            else
+                rows(caseCount) = row;
+            end
+        end
+    end
+
+    function savedFile = saveCurrentResults()
+        savedFile = '';
         if isempty(app.T) || height(app.T) == 0
             logMsg('No scenario table to save yet.');
             return;
@@ -443,9 +587,50 @@ app.status = uilabel(topButtonGrid, ...
             % The dashboard now focuses on visual input-output relationships.
 
             logMsg(sprintf('Saved Excel file: %s', outputFile));
+            savedFile = outputFile;
         catch ME
             logMsg(sprintf('ERROR saving Excel: %s', ME.message));
             uialert(app.fig, ME.message, 'Save Error');
+        end
+    end
+
+    function savedFile = saveSensitivityResults()
+        savedFile = '';
+        if isempty(app.sensitivityT) || height(app.sensitivityT) == 0
+            logMsg('No sensitivity table to save yet.');
+            return;
+        end
+
+        try
+            outputFile = strtrim(app.sensOutputField.Value);
+            if isempty(outputFile)
+                outputFile = readConfigFromUI().sensOutputFile;
+            end
+
+            stamp = char(datetime('now', 'Format', 'yyyyMMdd_HHmmss'));
+            [p, n, e] = fileparts(outputFile);
+            newName = sprintf('%s_%s%s', n, stamp, e);
+            if isempty(p)
+                outputFile = newName;
+            else
+                outputFile = fullfile(p, newName);
+            end
+
+            if isfile(outputFile)
+                delete(outputFile);
+            end
+
+            writetable(app.sensitivityT, outputFile, 'Sheet', 'sensitivity_results');
+            writetable(selectDerivedMetrics(app.sensitivityT), outputFile, 'Sheet', 'sensitivity_derived_metrics');
+            writetable(createSensitivitySummaryTable(app.sensitivityT), outputFile, 'Sheet', 'sensitivity_summary');
+            writetable(createBusStaticTableDashboard(app.base_mpc), outputFile, 'Sheet', 'bus_static');
+            writetable(createBranchStaticTableDashboard(app.base_mpc), outputFile, 'Sheet', 'branch_static');
+
+            logMsg(sprintf('Saved sensitivity Excel file: %s', outputFile));
+            savedFile = outputFile;
+        catch ME
+            logMsg(sprintf('ERROR saving sensitivity Excel: %s', ME.message));
+            uialert(app.fig, ME.message, 'Sensitivity Save Error');
         end
     end
 
@@ -574,6 +759,83 @@ app.status = uilabel(topButtonGrid, ...
         end
     end
 
+    function plotSensitivityResults(S)
+        cla(app.axSensPd2); cla(app.axSensPd4); cla(app.axSensLocation); cla(app.axSensSwap);
+
+        if isempty(S) || height(S) == 0
+            return;
+        end
+
+        sweepPd2 = S(strcmp(string(S.experiment), "sweep_Pd2"), :);
+        if height(sweepPd2) > 0
+            sweepPd2 = sortrows(sweepPd2, 'step_no');
+            plot(app.axSensPd2, sweepPd2.in_bus2_Pd_MW, sweepPd2.out_bus2_DLMP_LAM_P, '-o');
+            hold(app.axSensPd2, 'on');
+            plot(app.axSensPd2, sweepPd2.in_bus2_Pd_MW, sweepPd2.out_bus3_DLMP_LAM_P, '-o');
+            plot(app.axSensPd2, sweepPd2.in_bus2_Pd_MW, sweepPd2.out_bus4_DLMP_LAM_P, '-o');
+            hold(app.axSensPd2, 'off');
+            xlabel(app.axSensPd2, 'Bus 2 Pd [MW]');
+            ylabel(app.axSensPd2, 'DLMP LAM_P');
+            title(app.axSensPd2, 'Only Bus 2 Pd Changes');
+            legend(app.axSensPd2, {'Bus 2', 'Bus 3', 'Bus 4'}, 'Location', 'best');
+            grid(app.axSensPd2, 'off');
+        end
+
+        sweepPd4 = S(strcmp(string(S.experiment), "sweep_Pd4"), :);
+        if height(sweepPd4) > 0
+            sweepPd4 = sortrows(sweepPd4, 'step_no');
+            plot(app.axSensPd4, sweepPd4.in_bus4_Pd_MW, sweepPd4.out_bus2_DLMP_LAM_P, '-o');
+            hold(app.axSensPd4, 'on');
+            plot(app.axSensPd4, sweepPd4.in_bus4_Pd_MW, sweepPd4.out_bus3_DLMP_LAM_P, '-o');
+            plot(app.axSensPd4, sweepPd4.in_bus4_Pd_MW, sweepPd4.out_bus4_DLMP_LAM_P, '-o');
+            hold(app.axSensPd4, 'off');
+            xlabel(app.axSensPd4, 'Bus 4 Pd [MW]');
+            ylabel(app.axSensPd4, 'DLMP LAM_P');
+            title(app.axSensPd4, 'Only Bus 4 Pd Changes');
+            legend(app.axSensPd4, {'Bus 2', 'Bus 3', 'Bus 4'}, 'Location', 'best');
+            grid(app.axSensPd4, 'off');
+        end
+
+        fixedLocation = S(strcmp(string(S.experiment), "fixed_total_location"), :);
+        if height(fixedLocation) > 0
+            fixedLocation = sortrows(fixedLocation, 'step_no');
+            shareBus2 = fixedLocation.in_bus2_Pd_MW ./ max(eps, fixedLocation.total_Pd_MW);
+            plot(app.axSensLocation, shareBus2, fixedLocation.out_bus2_DLMP_LAM_P, '-o');
+            hold(app.axSensLocation, 'on');
+            plot(app.axSensLocation, shareBus2, fixedLocation.out_bus3_DLMP_LAM_P, '-o');
+            plot(app.axSensLocation, shareBus2, fixedLocation.out_bus4_DLMP_LAM_P, '-o');
+            hold(app.axSensLocation, 'off');
+            xlabel(app.axSensLocation, 'Bus 2 Share of Total Pd');
+            ylabel(app.axSensLocation, 'DLMP LAM_P');
+            title(app.axSensLocation, 'Same Total Demand, Different Load Location');
+            legend(app.axSensLocation, {'Bus 2', 'Bus 3', 'Bus 4'}, 'Location', 'best');
+            grid(app.axSensLocation, 'off');
+        end
+
+        originalRows = S(strcmp(string(S.experiment), "swap_original"), :);
+        swappedRows = S(strcmp(string(S.experiment), "swap_swapped"), :);
+        if height(originalRows) > 0 && height(swappedRows) > 0
+            originalRows = sortrows(originalRows, 'step_no');
+            swappedRows = sortrows(swappedRows, 'step_no');
+            nPairs = min(height(originalRows), height(swappedRows));
+            pairIndex = originalRows.step_no(1:nPairs);
+            dBus2 = swappedRows.out_bus2_DLMP_LAM_P(1:nPairs) - originalRows.out_bus2_DLMP_LAM_P(1:nPairs);
+            dBus3 = swappedRows.out_bus3_DLMP_LAM_P(1:nPairs) - originalRows.out_bus3_DLMP_LAM_P(1:nPairs);
+            dBus4 = swappedRows.out_bus4_DLMP_LAM_P(1:nPairs) - originalRows.out_bus4_DLMP_LAM_P(1:nPairs);
+            plot(app.axSensSwap, pairIndex, dBus2, '-o');
+            hold(app.axSensSwap, 'on');
+            plot(app.axSensSwap, pairIndex, dBus3, '-o');
+            plot(app.axSensSwap, pairIndex, dBus4, '-o');
+            yline(app.axSensSwap, 0, '--');
+            hold(app.axSensSwap, 'off');
+            xlabel(app.axSensSwap, 'Pair index');
+            ylabel(app.axSensSwap, 'Swapped - Original DLMP');
+            title(app.axSensSwap, 'Effect of Swapping Bus 2 and Bus 4 Pd');
+            legend(app.axSensSwap, {'Bus 2', 'Bus 3', 'Bus 4', 'No change'}, 'Location', 'best');
+            grid(app.axSensSwap, 'off');
+        end
+    end
+
     function logMsg(msg)
         stamp = datestr(now, 'HH:MM:SS');
         current = app.log.Value;
@@ -593,6 +855,7 @@ app.status = uilabel(topButtonGrid, ...
         cfg.offerPDF        = app.offerPdfDrop.Value;
         cfg.runValidation   = app.validateCheck.Value;
         cfg.outputFile      = strtrim(app.outputField.Value);
+        cfg.sensOutputFile  = strtrim(app.sensOutputField.Value);
         cfg.maxAttemptsPerScenario = 100;
 
         r = struct();
@@ -616,6 +879,9 @@ app.status = uilabel(topButtonGrid, ...
 
         if isempty(cfg.outputFile)
             cfg.outputFile = 'dataset_4bus_dashboard.xlsx';
+        end
+        if isempty(cfg.sensOutputFile)
+            cfg.sensOutputFile = 'sensitivity_4bus_dashboard.xlsx';
         end
     end
 end
@@ -666,6 +932,43 @@ function scenario = generateScenarioFromConfig(cfg)
     scenario.load_pdf = string(cfg.loadPDF);
     scenario.pf_pdf = string(cfg.pfPDF);
     scenario.offer_pdf = string(cfg.offerPDF);
+end
+
+function scenario = fixedScenarioFromConfig(cfg)
+    r = cfg.range;
+
+    scenario.Pd2 = mean(r.Pd2);
+    scenario.Pd4 = mean(r.Pd4);
+    scenario.pf2 = mean(r.pf2);
+    scenario.pf4 = mean(r.pf4);
+
+    scenario.Qd2 = calcQfromPandPFDashboard(scenario.Pd2, scenario.pf2);
+    scenario.Qd4 = calcQfromPandPFDashboard(scenario.Pd4, scenario.pf4);
+    scenario.Pd3 = 0;
+    scenario.Qd3 = 0;
+
+    scenario.grid_c2 = mean(r.grid_c2);
+    scenario.grid_c1 = mean(r.grid_c1);
+    scenario.grid_c0 = mean(r.grid_c0);
+
+    scenario.der_c2 = mean(r.der_c2);
+    scenario.der_c1 = mean(r.der_c1);
+    scenario.der_c0 = mean(r.der_c0);
+
+    scenario.pro_c2 = mean(r.pro_c2);
+    scenario.pro_c1 = mean(r.pro_c1);
+    scenario.pro_c0 = mean(r.pro_c0);
+
+    scenario.load_pdf = "Fixed";
+    scenario.pf_pdf = "Fixed";
+    scenario.offer_pdf = "Fixed";
+end
+
+function wideRange = sensitivityWideRange(rangeIn)
+    allP = [rangeIn.Pd2, rangeIn.Pd4];
+    wideRange = rangeIn;
+    wideRange.Pd2 = [min(allP), max(allP)];
+    wideRange.Pd4 = [min(allP), max(allP)];
 end
 
 function value = sampleByPDF(rangePair, pdfName)
@@ -944,6 +1247,25 @@ function exportTable = selectScenarioExportColumns(T)
             'out_prosumer_Pg_MW', 'out_prosumer_Qg_MVAr'};
     cols = cols(ismember(cols, T.Properties.VariableNames));
     exportTable = T(:, cols);
+end
+
+function summary = createSensitivitySummaryTable(T)
+    experiments = unique(string(T.experiment));
+    summary = table();
+    summary.number_of_cases = height(T);
+    summary.number_of_experiments = numel(experiments);
+    summary.min_total_Pd_MW = min(T.total_Pd_MW);
+    summary.max_total_Pd_MW = max(T.total_Pd_MW);
+    summary.min_objective_cost = min(T.objective_cost);
+    summary.max_objective_cost = max(T.objective_cost);
+    summary.min_total_P_loss_MW = min(T.total_P_loss_MW);
+    summary.max_total_P_loss_MW = max(T.total_P_loss_MW);
+    summary.min_bus2_DLMP = min(T.out_bus2_DLMP_LAM_P);
+    summary.max_bus2_DLMP = max(T.out_bus2_DLMP_LAM_P);
+    summary.min_bus3_DLMP = min(T.out_bus3_DLMP_LAM_P);
+    summary.max_bus3_DLMP = max(T.out_bus3_DLMP_LAM_P);
+    summary.min_bus4_DLMP = min(T.out_bus4_DLMP_LAM_P);
+    summary.max_bus4_DLMP = max(T.out_bus4_DLMP_LAM_P);
 end
 
 function econTable = runEconometricModels(T)
