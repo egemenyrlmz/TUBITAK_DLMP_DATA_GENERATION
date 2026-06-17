@@ -167,8 +167,8 @@ function dashboard_case33bw_dlmp_scenario_lab()
     app.lblQminQmax = addLabel(cg, 'Qmin/Qmax [MVAr]');
     app.qminmaxField = uieditfield(cg, 'text', 'Value', '-1.0, 1.0');
 
-    app.lblVg = addLabel(cg, 'Vg [p.u.]');
-    app.vgField = uieditfield(cg, 'numeric', 'Value', 1.00);
+    app.lblVlim = addLabel(cg, 'Vmin/Vmax [p.u.]');
+    app.vlimField = uieditfield(cg, 'text', 'Value', '0.90, 1.10');
 
     app.lblC2 = addLabel(cg, 'c2 range');
     app.c2Field = uieditfield(cg, 'text', 'Value', '0.010, 0.010');
@@ -391,11 +391,11 @@ function dashboard_case33bw_dlmp_scenario_lab()
 
     app.roleUITable = uitable(rg, ...
         'Data', app.busRoleConfig, ...
-        'ColumnEditable', [false true true true true true true true true true true true true true true true], ...
+        'ColumnEditable', [false true true true true true true true true true true true true true true true true], ...
         'CellEditCallback', @(~, ~) roleTableEdited());
     try
         app.roleUITable.ColumnFormat = {'numeric', roleItems(), 'numeric', 'numeric', 'numeric', 'numeric', ...
-            'numeric', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric'};
+            'numeric', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric'};
     catch
     end
 
@@ -482,6 +482,7 @@ function dashboard_case33bw_dlmp_scenario_lab()
             pfRange = parseRange(app.addPfField.Value, 'Added PF');
             pRange = parseRange(app.pminmaxField.Value, 'Pmin/Pmax');
             qRange = parseRange(app.qminmaxField.Value, 'Qmin/Qmax');
+            vRange = parseRange(app.vlimField.Value, 'Vmin/Vmax');
             c2Range = parseRange(app.c2Field.Value, 'c2 range');
             c1Range = parseRange(app.c1Field.Value, 'c1 range');
 
@@ -494,7 +495,8 @@ function dashboard_case33bw_dlmp_scenario_lab()
             roleCfg.Pmax_MW(rowIdx) = pRange(2);
             roleCfg.Qmin_MVAr(rowIdx) = qRange(1);
             roleCfg.Qmax_MVAr(rowIdx) = qRange(2);
-            roleCfg.Vg_pu(rowIdx) = app.vgField.Value;
+            roleCfg.Vmin_pu(rowIdx) = vRange(1);
+            roleCfg.Vmax_pu(rowIdx) = vRange(2);
             roleCfg.c2_min(rowIdx) = c2Range(1);
             roleCfg.c2_max(rowIdx) = c2Range(2);
             roleCfg.c1_min(rowIdx) = c1Range(1);
@@ -661,7 +663,7 @@ function dashboard_case33bw_dlmp_scenario_lab()
             app.addPfField.Value = formatRangeText(roleRow.pf_min, roleRow.pf_max);
             app.pminmaxField.Value = formatRangeText(roleRow.Pmin_MW, roleRow.Pmax_MW);
             app.qminmaxField.Value = formatRangeText(roleRow.Qmin_MVAr, roleRow.Qmax_MVAr);
-            app.vgField.Value = roleRow.Vg_pu;
+            app.vlimField.Value = formatRangeText(roleRow.Vmin_pu, roleRow.Vmax_pu);
             app.c2Field.Value = formatRangeText(roleRow.c2_min, roleRow.c2_max);
             app.c1Field.Value = formatRangeText(roleRow.c1_min, roleRow.c1_max);
             app.c0Field.Value = roleRow.c0;
@@ -847,8 +849,8 @@ function dashboard_case33bw_dlmp_scenario_lab()
             app.pminmaxField
             app.lblQminQmax
             app.qminmaxField
-            app.lblVg
-            app.vgField
+            app.lblVlim
+            app.vlimField
             app.lblC2
             app.c2Field
             app.lblC1
@@ -905,7 +907,7 @@ function dashboard_case33bw_dlmp_scenario_lab()
         r = placeRow(app.lblAddedPF, app.addPfField, r);
         r = placeRow(app.lblPminPmax, app.pminmaxField, r);
         r = placeRow(app.lblQminQmax, app.qminmaxField, r);
-        r = placeRow(app.lblVg, app.vgField, r);
+        r = placeRow(app.lblVlim, app.vlimField, r);
         r = placeRow(app.lblC2, app.c2Field, r);
         r = placeRow(app.lblC1, app.c1Field, r);
         r = placeRow(app.lblC0, app.c0Field, r);
@@ -1054,8 +1056,8 @@ function dashboard_case33bw_dlmp_scenario_lab()
             app.pminmaxField
             app.lblQminQmax
             app.qminmaxField
-            app.lblVg
-            app.vgField
+            app.lblVlim
+            app.vlimField
             app.lblC2
             app.c2Field
             app.lblC1
@@ -1731,7 +1733,7 @@ end
 
 function roleCfg = createDefaultBusRoleConfig(mpc)
     C = mpConst();
-    BUS_I = C.BUS_I; PD = C.PD;
+    BUS_I = C.BUS_I; PD = C.PD; VMAX = C.VMAX; VMIN = C.VMIN;
 
     busId = mpc.bus(:, BUS_I);
     nBus = numel(busId);
@@ -1769,7 +1771,8 @@ function roleCfg = createDefaultBusRoleConfig(mpc)
     Pmax = zeros(nBus, 1);
     Qmin = zeros(nBus, 1);
     Qmax = zeros(nBus, 1);
-    Vg   = ones(nBus, 1);
+    Vmin = mpc.bus(:, VMIN);
+    Vmax = mpc.bus(:, VMAX);
 
     % Cost placeholders.
     % For PQ buses these are not used.
@@ -1786,7 +1789,6 @@ function roleCfg = createDefaultBusRoleConfig(mpc)
             Pmax(i) = max(100, 2 * sum(mpc.bus(:, PD)));
             Qmin(i) = -100;
             Qmax(i) = 100;
-            Vg(i)   = 1.00;
 
             % Grid/slack cost.
             c2Min(i) = 0.020;
@@ -1798,19 +1800,19 @@ function roleCfg = createDefaultBusRoleConfig(mpc)
     end
 
     roleCfg = table(busId, role, addMin, addMax, pfMin, pfMax, ...
-        Pmin, Pmax, Qmin, Qmax, Vg, c2Min, c2Max, c1Min, c1Max, c0, ...
+        Pmin, Pmax, Qmin, Qmax, Vmin, Vmax, c2Min, c2Max, c1Min, c1Max, c0, ...
         'VariableNames', {'bus_id','role','add_Pd_min_MW','add_Pd_max_MW', ...
         'pf_min','pf_max','Pmin_MW','Pmax_MW','Qmin_MVAr','Qmax_MVAr', ...
-        'Vg_pu','c2_min','c2_max','c1_min','c1_max','c0'});
+        'Vmin_pu','Vmax_pu','c2_min','c2_max','c1_min','c1_max','c0'});
 end
 
 
 function roleCfg = validateBusRoleConfig(candidateCfg, referenceCfg, mpc)
     allowed = ["Slack/Grid", "PQ Load", "DER", "Prosumer", "Large Load"];
     required = {'bus_id','role','add_Pd_min_MW','add_Pd_max_MW','pf_min','pf_max', ...
-        'Pmin_MW','Pmax_MW','Qmin_MVAr','Qmax_MVAr','Vg_pu','c2_min','c2_max','c1_min','c1_max','c0'};
+        'Pmin_MW','Pmax_MW','Qmin_MVAr','Qmax_MVAr','Vmin_pu','Vmax_pu','c2_min','c2_max','c1_min','c1_max','c0'};
     numericCols = {'bus_id','add_Pd_min_MW','add_Pd_max_MW','pf_min','pf_max', ...
-        'Pmin_MW','Pmax_MW','Qmin_MVAr','Qmax_MVAr','Vg_pu','c2_min','c2_max','c1_min','c1_max','c0'};
+        'Pmin_MW','Pmax_MW','Qmin_MVAr','Qmax_MVAr','Vmin_pu','Vmax_pu','c2_min','c2_max','c1_min','c1_max','c0'};
 
     if nargin < 3
         error('validateBusRoleConfig requires candidate config, reference config, and mpc.');
@@ -1825,6 +1827,14 @@ function roleCfg = validateBusRoleConfig(candidateCfg, referenceCfg, mpc)
     end
 
     roleCfg = candidateCfg;
+
+    % Backward compatibility for older saved configs that stored only Vg_pu.
+    if ~ismember('Vmin_pu', roleCfg.Properties.VariableNames)
+        roleCfg.Vmin_pu = referenceCfg.Vmin_pu;
+    end
+    if ~ismember('Vmax_pu', roleCfg.Properties.VariableNames)
+        roleCfg.Vmax_pu = referenceCfg.Vmax_pu;
+    end
 
     for i = 1:numel(required)
         if ~ismember(required{i}, roleCfg.Properties.VariableNames)
@@ -1882,6 +1892,9 @@ function roleCfg = validateBusRoleConfig(candidateCfg, referenceCfg, mpc)
         if roleCfg.Qmin_MVAr(k) > roleCfg.Qmax_MVAr(k)
             error('Qmin > Qmax at bus %d.', roleCfg.bus_id(k));
         end
+        if roleCfg.Vmin_pu(k) > roleCfg.Vmax_pu(k)
+            error('Vmin > Vmax at bus %d.', roleCfg.bus_id(k));
+        end
         if roleCfg.c2_min(k) > roleCfg.c2_max(k) || roleCfg.c1_min(k) > roleCfg.c1_max(k)
             error('Invalid cost range at bus %d.', roleCfg.bus_id(k));
         end
@@ -1932,7 +1945,7 @@ function [mpc, scenarioInfo] = buildScenarioMPC(base_mpc, roleCfg, cfg)
             mpc.gen(slackGenRows(1), PMIN) = slackRole.Pmin_MW;
             mpc.gen(slackGenRows(1), QMIN) = slackRole.Qmin_MVAr;
             mpc.gen(slackGenRows(1), QMAX) = slackRole.Qmax_MVAr;
-            mpc.gen(slackGenRows(1), VG) = slackRole.Vg_pu;
+            mpc.gen(slackGenRows(1), VG) = 1.00;
         end
     end
 
@@ -1949,6 +1962,8 @@ function [mpc, scenarioInfo] = buildScenarioMPC(base_mpc, roleCfg, cfg)
 
         role = string(roleCfg.role(k));
         busRoleStrings(busRow) = role;
+        mpc.bus(busRow, VMIN) = roleCfg.Vmin_pu(k);
+        mpc.bus(busRow, VMAX) = roleCfg.Vmax_pu(k);
 
         switch role
             case "Slack/Grid"
@@ -2018,7 +2033,7 @@ function [mpc, genRow] = appendRoleGenerator(mpc, roleRow, cfg)
     genRow(QG) = 0;
     genRow(QMAX) = roleRow.Qmax_MVAr;
     genRow(QMIN) = roleRow.Qmin_MVAr;
-    genRow(VG) = roleRow.Vg_pu;
+    genRow(VG) = 1.00;
     genRow(MBASE) = mpc.baseMVA;
     genRow(GEN_STATUS) = 1;
     genRow(PMAX) = roleRow.Pmax_MW;
@@ -2736,7 +2751,7 @@ function txt = selectedBusInfoText(busId, mpc, roleCfg, busResults)
         pfRange = [NaN NaN];
         pRange = [NaN NaN];
         qRange = [NaN NaN];
-        vg = NaN;
+        vRange = [NaN NaN];
         c2 = [NaN NaN];
         c1 = [NaN NaN];
         c0 = NaN;
@@ -2746,7 +2761,7 @@ function txt = selectedBusInfoText(busId, mpc, roleCfg, busResults)
         pfRange = [roleRow.pf_min, roleRow.pf_max];
         pRange = [roleRow.Pmin_MW, roleRow.Pmax_MW];
         qRange = [roleRow.Qmin_MVAr, roleRow.Qmax_MVAr];
-        vg = roleRow.Vg_pu;
+        vRange = [roleRow.Vmin_pu, roleRow.Vmax_pu];
         c2 = [roleRow.c2_min, roleRow.c2_max];
         c1 = [roleRow.c1_min, roleRow.c1_max];
         c0 = roleRow.c0;
@@ -2768,7 +2783,8 @@ function txt = selectedBusInfoText(busId, mpc, roleCfg, busResults)
         sprintf('• Added PF range       : %.3f – %.3f', pfRange(1), pfRange(2))
         sprintf('• Pmin / Pmax          : %.4f – %.4f MW', pRange(1), pRange(2))
         sprintf('• Qmin / Qmax          : %.4f – %.4f MVAr', qRange(1), qRange(2))
-        sprintf('• Vg                   : %.3f p.u.', vg)
+        sprintf('• Vmin / Vmax          : %.3f – %.3f p.u.', vRange(1), vRange(2))
+        sprintf('• Fixed generator Vg   : %.3f p.u.', 1.00)
         ' '
         'COST MODEL'
         sprintf('• C(P) = %.4f P^2 + %.4f P + %.4f', c2(1), c1(1), c0)
