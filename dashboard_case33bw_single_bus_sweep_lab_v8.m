@@ -106,17 +106,23 @@ function dashboard_case33bw_single_bus_sweep_lab_v2_plotbus_totaldemand()
         'Value', '3', ...
         'ValueChangedFcn', @(~, ~) sweepBusChanged());
 
-    % Plot Bus is the bus whose DLMP / voltage / local dispatch traces are shown
-    % in the Sweep Plots tab. It is separate from the Sweep Bus, which defines
-    % the load-increase experiment on the x-axis.
-    app.lblPlotBus = addLabel(cg, 'Plot Bus');
-    app.plotBusDrop = uidropdown(cg, ...
+    % Plot Bus 1 / 2 define the buses whose DLMP traces are shown
+    % in the Sweep Plots tab. They are separate from the Sweep Bus, which
+    % defines the load-increase experiment on the x-axis.
+    app.lblPlotBus1 = addLabel(cg, 'Plot Bus 1');
+    app.plotBus1Drop = uidropdown(cg, ...
         'Items', busIdItems(app.base_mpc), ...
         'Value', '3', ...
         'ValueChangedFcn', @(~, ~) updateAllPlots());
 
+    app.lblPlotBus2 = addLabel(cg, 'Plot Bus 2');
+    app.plotBus2Drop = uidropdown(cg, ...
+        'Items', busIdItems(app.base_mpc), ...
+        'Value', '12', ...
+        'ValueChangedFcn', @(~, ~) updateAllPlots());
+
     app.syncPlotBusButton = uibutton(cg, 'push', ...
-        'Text', 'Use Sweep Bus for Plot Bus', ...
+        'Text', 'Use Sweep Bus for Plot Bus 1', ...
         'ButtonPushedFcn', @(~, ~) useSweepBusForPlots());
     app.syncPlotBusButton.Layout.Column = [1 2];
 
@@ -193,7 +199,7 @@ function dashboard_case33bw_single_bus_sweep_lab_v2_plotbus_totaldemand()
             'RULES:', ...
             '• Sweep bus must be PQ Load.', ...
             '• Only selected sweep bus Pd is swept.', ...
-            '• Plot Bus only changes displayed bus traces.', ...
+            '• Plot Bus 1/2 only change displayed DLMP traces.', ...
             '• DER/Prosumer limits and costs stay fixed.', ...
             '• DER/Prosumer Pg/Qg are optimized by OPF.', ...
             '• Other PQ loads stay at case33bw base values.'});
@@ -252,20 +258,18 @@ function dashboard_case33bw_single_bus_sweep_lab_v2_plotbus_totaldemand()
     app.busInfoArea.Layout.Row = [9 12];
 
     %% ---------------- Sweep plots tab ----------------
-    % Plot Bus selector is now placed in the left control panel, directly
+    % Plot Bus selectors are now placed in the left control panel, directly
     % under Selected Sweep Bus, so it is always visible. The Sweep Plots tab
     % only contains the plots.
-    pg = uigridlayout(app.tabPlots, [2 3]);
+    pg = uigridlayout(app.tabPlots, [2 2]);
     pg.Padding = [10 10 10 10];
     pg.RowHeight = {'1x', '1x'};
-    pg.ColumnWidth = {'1x', '1x', '1x'};
+    pg.ColumnWidth = {'1x', '1x'};
 
     app.axC2L       = uiaxes(pg); app.axC2L.Layout.Row = 1; app.axC2L.Layout.Column = 1; title(app.axC2L, 'System C2L vs Total Demand');
-    app.axDLMP      = uiaxes(pg); app.axDLMP.Layout.Row = 1; app.axDLMP.Layout.Column = 2; title(app.axDLMP, 'Plot Bus DLMP vs Swept Pd');
-    app.axLoss      = uiaxes(pg); app.axLoss.Layout.Row = 1; app.axLoss.Layout.Column = 3; title(app.axLoss, 'Total Loss vs Swept Pd');
-    app.axVoltage   = uiaxes(pg); app.axVoltage.Layout.Row = 2; app.axVoltage.Layout.Column = 1; title(app.axVoltage, 'Voltage vs Swept Pd');
-    app.axLoading   = uiaxes(pg); app.axLoading.Layout.Row = 2; app.axLoading.Layout.Column = 2; title(app.axLoading, 'Maximum Branch Loading vs Swept Pd');
-    app.axDispatch  = uiaxes(pg); app.axDispatch.Layout.Row = 2; app.axDispatch.Layout.Column = 3; title(app.axDispatch, 'Dispatch vs Swept Pd');
+    app.axDLMP      = uiaxes(pg); app.axDLMP.Layout.Row = 1; app.axDLMP.Layout.Column = 2; title(app.axDLMP, 'Bus 3 DLMP vs. Total Demand');
+    app.axLoss      = uiaxes(pg); app.axLoss.Layout.Row = 2; app.axLoss.Layout.Column = 1; title(app.axLoss, 'Total Loss vs Total Demand');
+    app.axDLMP2     = uiaxes(pg); app.axDLMP2.Layout.Row = 2; app.axDLMP2.Layout.Column = 2; title(app.axDLMP2, 'Bus 12 DLMP vs. Total Demand');
 
     %% ---------------- Data tab ----------------
     dg = uigridlayout(app.tabData, [2 2]);
@@ -325,12 +329,12 @@ function dashboard_case33bw_single_bus_sweep_lab_v2_plotbus_totaldemand()
             app.pdMaxField.Value = app.pdMinField.Value + max(0.1, basePd);
         end
 
-        % Before a sweep is generated, keep the Plot Bus aligned with the
+        % Before a sweep is generated, keep Plot Bus 1 aligned with the
         % Sweep Bus by default. After results exist, the user may choose any
-        % Plot Bus independently for comparison.
+        % Plot Bus 1 / 2 independently for comparison.
         try
-            if isfield(app, 'plotBusDrop') && (isempty(app.T) || height(app.T) == 0)
-                app.plotBusDrop.Value = char(string(busId));
+            if isfield(app, 'plotBus1Drop') && (isempty(app.T) || height(app.T) == 0)
+                app.plotBus1Drop.Value = char(string(busId));
             end
         catch
         end
@@ -340,7 +344,7 @@ function dashboard_case33bw_single_bus_sweep_lab_v2_plotbus_totaldemand()
 
     function useSweepBusForPlots()
         try
-            app.plotBusDrop.Value = app.sweepBusDrop.Value;
+            app.plotBus1Drop.Value = app.sweepBusDrop.Value;
             updateAllPlots();
         catch
         end
@@ -673,7 +677,7 @@ function dashboard_case33bw_single_bus_sweep_lab_v2_plotbus_totaldemand()
 
     function updateAllPlots()
         refreshTopology();
-        axesList = {app.axC2L, app.axDLMP, app.axLoss, app.axVoltage, app.axLoading, app.axDispatch};
+        axesList = {app.axC2L, app.axDLMP, app.axLoss, app.axDLMP2};
         for ii = 1:numel(axesList)
             cla(axesList{ii});
         end
@@ -687,72 +691,80 @@ function dashboard_case33bw_single_bus_sweep_lab_v2_plotbus_totaldemand()
             return;
         end
 
-        x = T.swept_Pd_MW;
-        plotBus = selectedPlotBusForPlots(T);
+        plotBus1 = selectedPlotBusForPlots(T, 1);
+        plotBus2 = selectedPlotBusForPlots(T, 2);
 
         % C2L is a system-level metric: objective_cost / total_Pd.
         % Therefore its x-axis is total system demand, not the plot bus or only
         % the swept bus demand.
         xC2L = T.total_Pd_MW;
+        yyaxis(app.axC2L, 'left');
         plot(app.axC2L, xC2L, T.cost_to_load_total, '.-');
-        xlabel(app.axC2L, 'Total Demand Pd [MW]'); ylabel(app.axC2L, 'Objective Cost / Total Pd');
-        title(app.axC2L, 'System C2L vs Total Demand'); grid(app.axC2L, 'on');
+        ylabel(app.axC2L, 'Objective Cost / Total Pd');
+        yyaxis(app.axC2L, 'right');
+        plot(app.axC2L, xC2L, T.total_Pd_MW, 'r-', 'LineWidth', 1.2);
+        ylabel(app.axC2L, 'Total Demand Pd [MW]');
+        yyaxis(app.axC2L, 'left');
+        xlabel(app.axC2L, 'Total Demand Pd [MW]');
+        title(app.axC2L, 'System C2L with Total Demand Reference');
+        legend(app.axC2L, {'C2L', 'Total Demand'}, 'Location', 'best');
+        grid(app.axC2L, 'on');
 
-        [xDlmp, yDlmp] = busSeriesForPlot(T, app.busResults, plotBus, 'DLMP_LAM_P');
+        [xDlmp, yDlmp] = busSeriesForPlot(T, app.busResults, plotBus1, 'DLMP_LAM_P', 'total_Pd_MW');
+        yyaxis(app.axDLMP, 'left');
         if isempty(xDlmp)
-            text(app.axDLMP, 0.1, 0.5, sprintf('No bus result found for Bus %d.', plotBus), 'Units', 'normalized');
+            text(app.axDLMP, 0.1, 0.5, sprintf('No bus result found for Bus %d.', plotBus1), 'Units', 'normalized');
         else
             plot(app.axDLMP, xDlmp, yDlmp, '.-');
         end
-        xlabel(app.axDLMP, 'Swept Bus Pd [MW]'); ylabel(app.axDLMP, 'LAM_P');
-        title(app.axDLMP, sprintf('Plot Bus %d DLMP vs Swept Pd', plotBus)); grid(app.axDLMP, 'on');
+        ylabel(app.axDLMP, 'LAM_P');
+        yyaxis(app.axDLMP, 'right');
+        plot(app.axDLMP, T.total_Pd_MW, T.total_Pd_MW, 'r-', 'LineWidth', 1.2);
+        ylabel(app.axDLMP, 'Total Demand Pd [MW]');
+        yyaxis(app.axDLMP, 'left');
+        if ~isempty(xDlmp)
+            legend(app.axDLMP, {sprintf('Bus %d DLMP', plotBus1), 'Total Demand'}, 'Location', 'best');
+        end
+        xlabel(app.axDLMP, 'Total Demand Pd [MW]');
+        title(app.axDLMP, sprintf('Bus %d DLMP vs. Total Demand', plotBus1)); grid(app.axDLMP, 'on');
 
-        plot(app.axLoss, x, T.total_P_loss_MW, '.-');
-        xlabel(app.axLoss, 'Swept Bus Pd [MW]'); ylabel(app.axLoss, 'P loss [MW]');
-        title(app.axLoss, 'Total Loss vs Swept Pd'); grid(app.axLoss, 'on');
+        yyaxis(app.axLoss, 'left');
+        plot(app.axLoss, T.total_Pd_MW, T.total_P_loss_MW, '.-');
+        ylabel(app.axLoss, 'P loss [MW]');
+        yyaxis(app.axLoss, 'right');
+        plot(app.axLoss, T.total_Pd_MW, T.total_Pd_MW, 'r-', 'LineWidth', 1.2);
+        ylabel(app.axLoss, 'Total Demand Pd [MW]');
+        yyaxis(app.axLoss, 'left');
+        xlabel(app.axLoss, 'Total Demand Pd [MW]');
+        title(app.axLoss, 'Total Loss with Total Demand Reference');
+        legend(app.axLoss, {'Total Loss', 'Total Demand'}, 'Location', 'best');
+        grid(app.axLoss, 'on');
 
-        plot(app.axVoltage, x, T.min_Vm_pu, '.-');
-        hold(app.axVoltage, 'on');
-        [xVm, yVm] = busSeriesForPlot(T, app.busResults, plotBus, 'Vm_pu');
-        if ~isempty(xVm)
-            plot(app.axVoltage, xVm, yVm, '.-');
-            legend(app.axVoltage, {'System min Vm', sprintf('Bus %d Vm', plotBus)}, 'Location', 'best');
+        [xDlmp2, yDlmp2] = busSeriesForPlot(T, app.busResults, plotBus2, 'DLMP_LAM_P', 'total_Pd_MW');
+        yyaxis(app.axDLMP2, 'left');
+        if isempty(xDlmp2)
+            text(app.axDLMP2, 0.1, 0.5, sprintf('No bus result found for Bus %d.', plotBus2), 'Units', 'normalized');
         else
-            legend(app.axVoltage, {'System min Vm'}, 'Location', 'best');
+            plot(app.axDLMP2, xDlmp2, yDlmp2, '.-');
         end
-        hold(app.axVoltage, 'off');
-        xlabel(app.axVoltage, 'Swept Bus Pd [MW]'); ylabel(app.axVoltage, 'Vm [p.u.]');
-        title(app.axVoltage, sprintf('Voltage vs Swept Pd | Plot Bus %d', plotBus)); grid(app.axVoltage, 'on');
-
-        if all(isnan(T.max_branch_loading_percent)) && ismember('max_branch_flow_MVA', T.Properties.VariableNames)
-            plot(app.axLoading, x, T.max_branch_flow_MVA, '.-');
-            xlabel(app.axLoading, 'Swept Bus Pd [MW]'); ylabel(app.axLoading, 'Max branch |S| [MVA]');
-            title(app.axLoading, 'Maximum Branch Flow vs Swept Pd (RATE_A undefined)');
-        else
-            plot(app.axLoading, x, T.max_branch_loading_percent, '.-');
-            xlabel(app.axLoading, 'Swept Bus Pd [MW]'); ylabel(app.axLoading, 'Max loading [%]');
-            title(app.axLoading, 'Maximum Branch Loading vs Swept Pd');
+        ylabel(app.axDLMP2, 'LAM_P');
+        yyaxis(app.axDLMP2, 'right');
+        plot(app.axDLMP2, T.total_Pd_MW, T.total_Pd_MW, 'r-', 'LineWidth', 1.2);
+        ylabel(app.axDLMP2, 'Total Demand Pd [MW]');
+        yyaxis(app.axDLMP2, 'left');
+        if ~isempty(xDlmp2)
+            legend(app.axDLMP2, {sprintf('Bus %d DLMP', plotBus2), 'Total Demand'}, 'Location', 'best');
         end
-        grid(app.axLoading, 'on');
+        xlabel(app.axDLMP2, 'Total Demand Pd [MW]');
+        title(app.axDLMP2, sprintf('Bus %d DLMP vs. Total Demand', plotBus2)); grid(app.axDLMP2, 'on');
 
-        plot(app.axDispatch, x, T.slack_Pg_MW, '.-');
-        hold(app.axDispatch, 'on');
-        plot(app.axDispatch, x, T.local_gen_Pg_MW, '.-');
-        leg = {'Slack Pg', 'DER+Prosumer Pg'};
-        [xPg, yPg] = genSeriesForPlot(T, app.genResults, plotBus, 'Pg_MW');
-        if ~isempty(xPg)
-            plot(app.axDispatch, xPg, yPg, '.-');
-            leg{end+1} = sprintf('Bus %d Pg', plotBus); %#ok<AGROW>
-        end
-        hold(app.axDispatch, 'off');
-        xlabel(app.axDispatch, 'Swept Bus Pd [MW]'); ylabel(app.axDispatch, 'Pg [MW]');
-        title(app.axDispatch, sprintf('Dispatch vs Swept Pd | Plot Bus %d', plotBus));
-        legend(app.axDispatch, leg, 'Location', 'best');
-        grid(app.axDispatch, 'on');
-
-        function busId = selectedPlotBusForPlots(Tlocal)
+        function busId = selectedPlotBusForPlots(Tlocal, slotNo)
             try
-                busId = str2double(app.plotBusDrop.Value);
+                if slotNo == 1
+                    busId = str2double(app.plotBus1Drop.Value);
+                else
+                    busId = str2double(app.plotBus2Drop.Value);
+                end
             catch
                 busId = NaN;
             end
@@ -761,10 +773,16 @@ function dashboard_case33bw_single_bus_sweep_lab_v2_plotbus_totaldemand()
             end
         end
 
-        function [xOut, yOut] = busSeriesForPlot(Tlocal, B, busId, varName)
+        function [xOut, yOut] = busSeriesForPlot(Tlocal, B, busId, varName, xVarName)
             xOut = [];
             yOut = [];
+            if nargin < 5 || isempty(xVarName)
+                xVarName = 'swept_Pd_MW';
+            end
             if isempty(B) || height(B) == 0 || ~ismember(varName, B.Properties.VariableNames)
+                return;
+            end
+            if ~ismember(xVarName, Tlocal.Properties.VariableNames)
                 return;
             end
             Bb = B(B.bus_id == busId, :);
@@ -775,33 +793,8 @@ function dashboard_case33bw_single_bus_sweep_lab_v2_plotbus_totaldemand()
             if isempty(ia)
                 return;
             end
-            xOut = Tlocal.swept_Pd_MW(ia);
+            xOut = Tlocal.(xVarName)(ia);
             yOut = Bb.(varName)(ib);
-        end
-
-        function [xOut, yOut] = genSeriesForPlot(Tlocal, G, busId, varName)
-            xOut = [];
-            yOut = [];
-            if isempty(G) || height(G) == 0 || ~ismember(varName, G.Properties.VariableNames)
-                return;
-            end
-            Gg = G(G.gen_bus == busId, :);
-            if isempty(Gg) || height(Gg) == 0
-                return;
-            end
-            % If there are multiple generators on the same bus, aggregate Pg/Qg by step.
-            scen = unique(Gg.scenario_id, 'stable');
-            vals = NaN(numel(scen), 1);
-            for jj = 1:numel(scen)
-                vals(jj) = sum(Gg.(varName)(Gg.scenario_id == scen(jj)), 'omitnan');
-            end
-            temp = table(scen, vals, 'VariableNames', {'scenario_id','value'});
-            [~, ia, ib] = intersect(Tlocal.scenario_id, temp.scenario_id, 'stable');
-            if isempty(ia)
-                return;
-            end
-            xOut = Tlocal.swept_Pd_MW(ia);
-            yOut = temp.value(ib);
         end
     end
 
