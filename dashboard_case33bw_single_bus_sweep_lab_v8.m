@@ -127,13 +127,13 @@ function dashboard_case33bw_single_bus_sweep_lab_v2_plotbus_totaldemand()
     app.syncPlotBusButton.Layout.Column = [1 2];
 
     app.lblPdMin = addLabel(cg, 'Pd min [MW]');
-    app.pdMinField = uieditfield(cg, 'numeric', 'Value', defaultBusPd(app.base_mpc, 3));
+    app.pdMinField = uieditfield(cg, 'numeric', 'Value', 0);
 
     app.lblPdMax = addLabel(cg, 'Pd max [MW]');
-    app.pdMaxField = uieditfield(cg, 'numeric', 'Value', max(defaultBusPd(app.base_mpc, 3) + 1.0, 1.0));
+    app.pdMaxField = uieditfield(cg, 'numeric', 'Value', 4);
 
     app.lblSteps = addLabel(cg, 'Number of steps');
-    app.stepsField = uispinner(cg, 'Value', 100, 'Limits', [2 10000], 'RoundFractionalValues', 'on');
+    app.stepsField = uispinner(cg, 'Value', 400, 'Limits', [2 10000], 'RoundFractionalValues', 'on');
 
     app.lblQMode = addLabel(cg, 'Q mode');
     app.qModeDrop = uidropdown(cg, ...
@@ -322,7 +322,7 @@ function dashboard_case33bw_single_bus_sweep_lab_v2_plotbus_totaldemand()
         busId = str2double(app.sweepBusDrop.Value);
         app.sweepPfField.Value = defaultBusPF(app.base_mpc, busId);
         basePd = defaultBusPd(app.base_mpc, busId);
-        if app.pdMinField.Value == 0 || ~isfinite(app.pdMinField.Value)
+        if ~isfinite(app.pdMinField.Value)
             app.pdMinField.Value = basePd;
         end
         if app.pdMaxField.Value <= app.pdMinField.Value
